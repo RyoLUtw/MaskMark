@@ -1,9 +1,10 @@
-const CLIENT_ID = '332987792434-u7r3hdl46asbqo0si3ngqu46kdbgf2at.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
+const CLIENT_ID = 'REPLACE_WITH_CLIENT_ID.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email';
 const DRIVE_FILE_NAME = 'maskmark-data.json';
 
 const state = {
   gapiReady: false,
+  gisReady: false,
   signedIn: false,
   userEmail: '',
   view: 'projector',
@@ -14,6 +15,8 @@ const state = {
   status: '',
   error: ''
 };
+
+let tokenClient = null;
 
 const el = (tag, attrs = {}, children = []) => {
   const element = document.createElement(tag);
@@ -36,50 +39,79 @@ function setStatus(message, isError = false) {
   render();
 }
 
-function updateSigninStatus(isSignedIn) {
-  state.signedIn = isSignedIn;
-  state.userEmail = isSignedIn ? gapi.auth2.getAuthInstance().currentUser.get().getBasicProfile().getEmail() : '';
-  if (isSignedIn) {
-    loadDataFromDrive();
-    state.view = 'projector';
-  } else {
-    state.data = { classes: [] };
-    state.dataFileId = null;
-    state.selectedClassId = null;
-    state.selectedAssessmentId = null;
+function gapiLoaded() {
+  gapi.load('client', initGapiClient);
+}
+
+async function initGapiClient() {
+  try {
+    await gapi.client.init({ discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'] });
+    state.gapiReady = true;
+    render();
+  } catch (err) {
+    console.error(err);
+    setStatus('Failed to initialize Google API. Please refresh.', true);
   }
+}
+
+function gisLoaded() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: () => {}
+  });
+  state.gisReady = true;
   render();
 }
 
-function initGapi() {
-  gapi.load('client:auth2', async () => {
-    try {
-      await gapi.client.init({
-        clientId: CLIENT_ID,
-        scope: SCOPES,
-        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
-      });
-      state.gapiReady = true;
-      gapi.auth2.getAuthInstance().isSignedIn.listen(updateSigninStatus);
-      updateSigninStatus(gapi.auth2.getAuthInstance().isSignedIn.get());
-    } catch (err) {
-      setStatus('Failed to initialize Google API. Please refresh.', true);
-      console.error(err);
-    }
-  });
-}
-
-async function signIn() {
-  if (!state.gapiReady) return;
+async function fetchUserEmail() {
   try {
-    await gapi.auth2.getAuthInstance().signIn();
+    const resp = await gapi.client.request({ path: 'https://www.googleapis.com/oauth2/v3/userinfo' });
+    state.userEmail = resp.result.email || '';
   } catch (err) {
-    setStatus('Sign-in cancelled or failed.', true);
+    console.error('Failed to fetch user info', err);
+    state.userEmail = '';
   }
 }
 
+async function signIn() {
+  if (!state.gapiReady || !state.gisReady) return;
+  setStatus('');
+  tokenClient.callback = async resp => {
+    if (resp.error) {
+      console.error(resp);
+      setStatus('Sign-in failed. Please try again.', true);
+      return;
+    }
+    try {
+      gapi.client.setToken({ access_token: resp.access_token });
+      state.signedIn = true;
+      state.view = 'projector';
+      await fetchUserEmail();
+      await loadDataFromDrive();
+      setStatus('Signed in.');
+      render();
+    } catch (err) {
+      console.error(err);
+      setStatus('Sign-in failed. Please try again.', true);
+    }
+  };
+  tokenClient.requestAccessToken({ prompt: state.signedIn ? '' : 'consent' });
+}
+
 function signOut() {
-  gapi.auth2.getAuthInstance().signOut();
+  const token = gapi.client.getToken?.()?.access_token;
+  if (token) {
+    google.accounts.oauth2.revoke(token, () => {});
+  }
+  gapi.client.setToken('');
+  state.signedIn = false;
+  state.userEmail = '';
+  state.data = { classes: [] };
+  state.dataFileId = null;
+  state.selectedClassId = null;
+  state.selectedAssessmentId = null;
+  render();
 }
 
 function ensureDefaultSelections() {
@@ -317,8 +349,8 @@ function renderLanding() {
       el('div', { class: 'title', text: 'MaskMark – Anonymous Classroom Scores' }),
       el('p', { text: 'Sign in with Google to manage classes, secret IDs, and assessment scores. No student names are stored.' }),
       el('div', { class: 'h-stack' }, [
-        el('button', { disabled: !state.gapiReady, onclick: signIn }, 'Sign in with Google'),
-        !state.gapiReady && el('span', { class: 'muted small', text: 'Loading Google Sign-In...' })
+        el('button', { disabled: !state.gapiReady || !state.gisReady, onclick: signIn }, 'Sign in with Google'),
+        (!state.gapiReady || !state.gisReady) && el('span', { class: 'muted small', text: 'Loading Google Sign-In...' })
       ]),
       state.error && el('div', { class: 'status error', text: state.error })
     ])
@@ -656,5 +688,5 @@ function render() {
 
 document.addEventListener('DOMContentLoaded', () => {
   render();
-  initGapi();
+  if (window.gapi) gapiLoaded();
 });
