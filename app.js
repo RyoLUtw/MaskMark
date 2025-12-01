@@ -31,9 +31,12 @@ const el = (tag, attrs = {}, children = []) => {
     else if (key.startsWith('on') && typeof value === 'function') element[key] = value;
     else element.setAttribute(key, value);
   });
-  (Array.isArray(children) ? children : [children]).filter(Boolean).forEach(child => {
-    if (typeof child === 'string') element.appendChild(document.createTextNode(child));
-    else element.appendChild(child);
+  (Array.isArray(children) ? children : [children]).filter(child => child !== null && child !== undefined).forEach(child => {
+    if (child instanceof Node) {
+      element.appendChild(child);
+    } else {
+      element.appendChild(document.createTextNode(String(child)));
+    }
   });
   return element;
 };
@@ -271,7 +274,6 @@ function handleSecretIdChange(classId, studentId, value) {
   const student = classObj.students.find(s => s.studentId === studentId);
   if (!student) return;
   student.secretId = value.trim();
-  render();
 }
 
 function validateSecretIds(classObj) {
@@ -320,7 +322,6 @@ function handleScoreChange(classId, assessmentId, studentId, value) {
   const assess = classObj?.assessments.find(a => a.assessmentId === assessmentId);
   if (!assess) return;
   assess.scores[studentId] = value === '' ? null : Number(value);
-  render();
 }
 
 function applyScoreChanges() {
