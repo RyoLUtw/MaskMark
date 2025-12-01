@@ -14,7 +14,9 @@ const state = {
   selectedClassId: null,
   selectedAssessmentId: null,
   status: '',
-  error: ''
+  error: '',
+  staySignedIn: localStorage.getItem('maskmark_stay_signed_in') === '1',
+  autoSignInAttempted: false
 };
 
 let tokenClient = null;
@@ -59,6 +61,7 @@ async function initGapiClient() {
     state.gapiReady = true;
     logStep('gapi client ready.');
     render();
+    maybeAutoSignIn();
   } catch (err) {
     console.error(err);
     setStatus('Failed to initialize Google API. Please refresh.', true);
@@ -75,6 +78,7 @@ function gisLoaded() {
   state.gisReady = true;
   logStep('GIS token client ready.');
   render();
+  maybeAutoSignIn();
 }
 
 async function fetchUserEmail() {
@@ -96,26 +100,7 @@ async function signIn() {
   }
   logStep('Starting sign-in request...');
   setStatus('Starting Google sign-in...');
-  tokenClient.callback = async resp => {
-    if (resp.error) {
-      console.error(resp);
-      setStatus('Sign-in failed. Please try again.', true);
-      return;
-    }
-    try {
-      logStep('Token received, setting gapi token.');
-      gapi.client.setToken({ access_token: resp.access_token });
-      state.signedIn = true;
-      state.view = 'projector';
-      await fetchUserEmail();
-      await loadDataFromDrive();
-      setStatus('Signed in.');
-      render();
-    } catch (err) {
-      console.error(err);
-      setStatus('Sign-in failed. Please try again.', true);
-    }
-  };
+  tokenClient.callback = resp => handleTokenResponse(resp, { silent: false });
   tokenClient.requestAccessToken({ prompt: state.signedIn ? '' : 'consent' });
 }
 
@@ -131,6 +116,9 @@ function signOut() {
   state.dataFileId = null;
   state.selectedClassId = null;
   state.selectedAssessmentId = null;
+  state.autoSignInAttempted = false;
+  state.staySignedIn = false;
+  localStorage.setItem('maskmark_stay_signed_in', '0');
   render();
 }
 
@@ -185,10 +173,9 @@ async function saveDataToDrive() {
   try {
     logStep('Saving data to Drive...');
     setStatus('Saving...');
-    const metadata = {
-      name: DRIVE_FILE_NAME,
-      parents: ['appDataFolder']
-    };
+    const metadata = state.dataFileId
+      ? { name: DRIVE_FILE_NAME }
+      : { name: DRIVE_FILE_NAME, parents: ['appDataFolder'] };
     const boundary = '-------314159265358979323846';
     const delimiter = `\r\n--${boundary}\r\n`;
     const closeDelim = `\r\n--${boundary}--`;
@@ -227,6 +214,36 @@ async function saveDataToDrive() {
     console.error(err);
     setStatus('Failed to save to Drive.', true);
   }
+}
+
+async function handleTokenResponse(resp, { silent }) {
+  if (resp.error) {
+    console.error(resp);
+    if (!silent) setStatus('Sign-in failed. Please try again.', true);
+    return;
+  }
+  try {
+    logStep('Token received, setting gapi token.');
+    gapi.client.setToken({ access_token: resp.access_token });
+    state.signedIn = true;
+    state.view = 'projector';
+    if (state.staySignedIn) localStorage.setItem('maskmark_stay_signed_in', '1');
+    await fetchUserEmail();
+    await loadDataFromDrive();
+    setStatus('Signed in.');
+    render();
+  } catch (err) {
+    console.error(err);
+    if (!silent) setStatus('Sign-in failed. Please try again.', true);
+  }
+}
+
+function maybeAutoSignIn() {
+  if (!state.gapiReady || !state.gisReady || state.signedIn || !state.staySignedIn || state.autoSignInAttempted) return;
+  state.autoSignInAttempted = true;
+  logStep('Attempting silent sign-in with saved session...');
+  tokenClient.callback = resp => handleTokenResponse(resp, { silent: true });
+  tokenClient.requestAccessToken({ prompt: '' });
 }
 
 function createClass({ name, size }) {
@@ -370,6 +387,11 @@ function applyScoreImport(classId, assessmentId, rows, mode) {
 }
 
 function renderLanding() {
+  const staySignedCheckbox = el('input', { type: 'checkbox', onchange: e => {
+    state.staySignedIn = e.target.checked;
+    localStorage.setItem('maskmark_stay_signed_in', state.staySignedIn ? '1' : '0');
+  } });
+  staySignedCheckbox.checked = state.staySignedIn;
   return el('main', {}, [
     el('div', { class: 'card stack' }, [
       el('div', { class: 'title', text: 'MaskMark – Anonymous Classroom Scores' }),
@@ -378,6 +400,7 @@ function renderLanding() {
         el('button', { disabled: !state.gapiReady || !state.gisReady, onclick: signIn }, 'Sign in with Google'),
         (!state.gapiReady || !state.gisReady) && el('span', { class: 'muted small', text: 'Loading Google Sign-In...' })
       ]),
+      el('label', { class: 'h-stack', style: 'gap:8px; align-items:center;' }, [staySignedCheckbox, el('span', { text: 'Stay signed in on this device' })]),
       el('div', { class: 'muted small' }, `gapi ready: ${state.gapiReady} • GIS ready: ${state.gisReady}`),
       state.error && el('div', { class: 'status error', text: state.error })
     ])
