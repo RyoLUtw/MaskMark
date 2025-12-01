@@ -1,6 +1,7 @@
 const CLIENT_ID = '332987792434-u7r3hdl46asbqo0si3ngqu46kdbgf2at.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email';
 const DRIVE_FILE_NAME = 'maskmark-data.json';
+const LOG_PREFIX = '[MaskMark]';
 
 const state = {
   gapiReady: false,
@@ -34,19 +35,27 @@ const el = (tag, attrs = {}, children = []) => {
 };
 
 function setStatus(message, isError = false) {
+  if (message) console.log(LOG_PREFIX, isError ? 'ERROR' : 'STATUS', message);
   state.status = isError ? '' : message;
   state.error = isError ? message : '';
   render();
 }
 
+function logStep(...parts) {
+  console.log(LOG_PREFIX, ...parts);
+}
+
 function gapiLoaded() {
+  logStep('Google API script loaded, requesting client library.');
   gapi.load('client', initGapiClient);
 }
 
 async function initGapiClient() {
   try {
+    logStep('Initializing gapi client...');
     await gapi.client.init({ discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'] });
     state.gapiReady = true;
+    logStep('gapi client ready.');
     render();
   } catch (err) {
     console.error(err);
@@ -55,19 +64,23 @@ async function initGapiClient() {
 }
 
 function gisLoaded() {
+  logStep('Google Identity Services script loaded, creating token client.');
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
     callback: () => {}
   });
   state.gisReady = true;
+  logStep('GIS token client ready.');
   render();
 }
 
 async function fetchUserEmail() {
   try {
+    logStep('Fetching user email...');
     const resp = await gapi.client.request({ path: 'https://www.googleapis.com/oauth2/v3/userinfo' });
     state.userEmail = resp.result.email || '';
+    logStep('User email loaded:', state.userEmail);
   } catch (err) {
     console.error('Failed to fetch user info', err);
     state.userEmail = '';
@@ -75,8 +88,12 @@ async function fetchUserEmail() {
 }
 
 async function signIn() {
-  if (!state.gapiReady || !state.gisReady) return;
-  setStatus('');
+  if (!state.gapiReady || !state.gisReady) {
+    setStatus('Google libraries are still loading. Please wait.', true);
+    return;
+  }
+  logStep('Starting sign-in request...');
+  setStatus('Starting Google sign-in...');
   tokenClient.callback = async resp => {
     if (resp.error) {
       console.error(resp);
@@ -84,6 +101,7 @@ async function signIn() {
       return;
     }
     try {
+      logStep('Token received, setting gapi token.');
       gapi.client.setToken({ access_token: resp.access_token });
       state.signedIn = true;
       state.view = 'projector';
@@ -130,6 +148,7 @@ function ensureDefaultSelections() {
 
 async function loadDataFromDrive() {
   try {
+    logStep('Loading data from Drive...');
     setStatus('Loading data...');
     const listResp = await gapi.client.drive.files.list({
       spaces: 'appDataFolder',
@@ -147,8 +166,10 @@ async function loadDataFromDrive() {
     }
     const file = files[0];
     state.dataFileId = file.id;
+    logStep('Found data file', file.id, 'fetching contents...');
     const dataResp = await gapi.client.drive.files.get({ fileId: file.id, alt: 'media' });
     state.data = dataResp.result || { classes: [] };
+    logStep('Data loaded from Drive.');
     ensureDefaultSelections();
     setStatus('Data loaded.');
     render();
@@ -160,6 +181,7 @@ async function loadDataFromDrive() {
 
 async function saveDataToDrive() {
   try {
+    logStep('Saving data to Drive...');
     setStatus('Saving...');
     const metadata = {
       name: DRIVE_FILE_NAME,
@@ -179,6 +201,7 @@ async function saveDataToDrive() {
       closeDelim;
 
     if (state.dataFileId) {
+      logStep('Updating existing data file', state.dataFileId);
       await gapi.client.request({
         path: `/upload/drive/v3/files/${state.dataFileId}`,
         method: 'PATCH',
@@ -187,6 +210,7 @@ async function saveDataToDrive() {
         body: multipartRequestBody
       });
     } else {
+      logStep('Creating new data file in appDataFolder');
       const createResp = await gapi.client.request({
         path: '/upload/drive/v3/files',
         method: 'POST',
@@ -352,6 +376,7 @@ function renderLanding() {
         el('button', { disabled: !state.gapiReady || !state.gisReady, onclick: signIn }, 'Sign in with Google'),
         (!state.gapiReady || !state.gisReady) && el('span', { class: 'muted small', text: 'Loading Google Sign-In...' })
       ]),
+      el('div', { class: 'muted small' }, `gapi ready: ${state.gapiReady} • GIS ready: ${state.gisReady}`),
       state.error && el('div', { class: 'status error', text: state.error })
     ])
   ]);
@@ -687,6 +712,7 @@ function render() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  logStep('DOM fully loaded, initial render.');
   render();
   if (window.gapi) gapiLoaded();
 });
