@@ -56,6 +56,11 @@ button.secondary {
   box-shadow: none;
 }
 
+button.danger {
+  background: #c62828;
+  box-shadow: 0 4px 12px rgba(198, 40, 40, 0.25);
+}
+
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -93,6 +98,28 @@ label {
   display: block;
   font-weight: 600;
   margin-bottom: 6px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tab {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: #0f172a;
+  box-shadow: none;
+}
+
+.tab.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  box-shadow: 0 4px 12px rgba(21, 101, 192, 0.2);
 }
 
 input, select, textarea {

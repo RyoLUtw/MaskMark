@@ -16,7 +16,8 @@ const state = {
   status: '',
   error: '',
   staySignedIn: localStorage.getItem('maskmark_stay_signed_in') === '1',
-  autoSignInAttempted: false
+  autoSignInAttempted: false,
+  teacherTab: 'classes'
 };
 
 let tokenClient = null;
@@ -121,6 +122,7 @@ function signOut() {
   state.selectedAssessmentId = null;
   state.autoSignInAttempted = false;
   state.staySignedIn = false;
+  state.teacherTab = 'classes';
   localStorage.setItem('maskmark_stay_signed_in', '0');
   render();
 }
@@ -268,12 +270,45 @@ function createClass({ name, size }) {
   render();
 }
 
+function updateClassName(classId, name) {
+  const classObj = state.data.classes.find(c => c.classId === classId);
+  if (!classObj) return;
+  const trimmed = name.trim();
+  if (!trimmed) { setStatus('Class name cannot be empty.', true); return; }
+  classObj.className = trimmed;
+  saveDataToDrive();
+  render();
+}
+
+function deleteClass(classId) {
+  const idx = state.data.classes.findIndex(c => c.classId === classId);
+  if (idx === -1) return;
+  state.data.classes.splice(idx, 1);
+  if (state.selectedClassId === classId) {
+    state.selectedClassId = state.data.classes[0]?.classId || null;
+    state.selectedAssessmentId = null;
+  }
+  saveDataToDrive();
+  render();
+}
+
 function handleSecretIdChange(classId, studentId, value) {
   const classObj = state.data.classes.find(c => c.classId === classId);
   if (!classObj) return;
   const student = classObj.students.find(s => s.studentId === studentId);
   if (!student) return;
   student.secretId = value.trim();
+}
+
+function deleteStudent(classId, studentId) {
+  const classObj = state.data.classes.find(c => c.classId === classId);
+  if (!classObj) return;
+  const idx = classObj.students.findIndex(s => s.studentId === studentId);
+  if (idx === -1) return;
+  classObj.students.splice(idx, 1);
+  classObj.assessments.forEach(a => { delete a.scores[studentId]; });
+  saveDataToDrive();
+  render();
 }
 
 function validateSecretIds(classObj) {
@@ -313,6 +348,32 @@ function createAssessment(classId, { title, date, maxScore }) {
   };
   classObj.assessments.push(assessment);
   state.selectedAssessmentId = assessment.assessmentId;
+  saveDataToDrive();
+  render();
+}
+
+function updateAssessment(classId, assessmentId, { title, date, maxScore }) {
+  const classObj = state.data.classes.find(c => c.classId === classId);
+  const assess = classObj?.assessments.find(a => a.assessmentId === assessmentId);
+  if (!assess) return;
+  const trimmedTitle = title.trim();
+  if (!trimmedTitle || Number.isNaN(maxScore)) { setStatus('Enter a title and numeric max score.', true); return; }
+  assess.title = trimmedTitle;
+  assess.date = date;
+  assess.maxScore = Number(maxScore);
+  saveDataToDrive();
+  render();
+}
+
+function deleteAssessment(classId, assessmentId) {
+  const classObj = state.data.classes.find(c => c.classId === classId);
+  if (!classObj) return;
+  const idx = classObj.assessments.findIndex(a => a.assessmentId === assessmentId);
+  if (idx === -1) return;
+  classObj.assessments.splice(idx, 1);
+  if (state.selectedAssessmentId === assessmentId) {
+    state.selectedAssessmentId = classObj.assessments[0]?.assessmentId || null;
+  }
   saveDataToDrive();
   render();
 }
@@ -535,7 +596,11 @@ function renderRosterSection(classObj) {
     });
     const td = el('td', {}, input);
     if (duplicates.has(s.secretId) && s.secretId) td.classList.add('dup');
-    return el('tr', {}, [el('td', {}, s.studentId), td]);
+    return el('tr', {}, [
+      el('td', {}, s.studentId),
+      td,
+      el('td', {}, el('button', { class: 'danger secondary', onclick: () => deleteStudent(classObj.classId, s.studentId) }, 'Delete'))
+    ]);
   });
 
   return el('div', { class: 'card stack' }, [
@@ -545,7 +610,7 @@ function renderRosterSection(classObj) {
     ]),
     duplicates.size ? el('div', { class: 'status error', text: 'Duplicate secret IDs detected. Each secret ID must be unique.' }) : null,
     el('table', { class: 'table' }, [
-      el('thead', {}, el('tr', {}, [el('th', {}, 'Student ID'), el('th', {}, 'Secret ID')])) ,
+      el('thead', {}, el('tr', {}, [el('th', {}, 'Student ID'), el('th', {}, 'Secret ID'), el('th', {}, 'Actions')])) ,
       el('tbody', {}, rows)
     ])
   ]);
@@ -623,33 +688,111 @@ function renderAssessmentsSection(classObj) {
 
   const assessmentList = classObj.assessments.map(a => el('div', { class: 'h-stack', style: 'justify-content: space-between;' }, [
     el('div', {}, [el('strong', {}, a.title), el('div', { class: 'small muted', text: `${a.date || 'No date'} • Max ${a.maxScore}` })]),
-    el('button', { class: state.selectedAssessmentId === a.assessmentId ? '' : 'secondary', onclick: () => { state.selectedAssessmentId = a.assessmentId; render(); } }, 'Open')
+    el('div', { class: 'h-stack' }, [
+      el('button', { class: state.selectedAssessmentId === a.assessmentId ? '' : 'secondary', onclick: () => { state.selectedAssessmentId = a.assessmentId; render(); } }, 'Open'),
+      el('button', { class: 'danger secondary', onclick: () => deleteAssessment(classObj.classId, a.assessmentId) }, 'Delete')
+    ])
   ]));
 
-  return el('div', { class: 'card stack' }, [
-    el('div', { class: 'title', text: 'Assessments' }),
-    assessmentList.length ? el('div', { class: 'stack' }, assessmentList) : el('div', { class: 'muted' }, 'No assessments yet.'),
-    el('div', { class: 'stack', style: 'border-top:1px solid var(--border); padding-top:12px;' }, [
-      el('div', { class: 'title', text: 'Create new assessment' }),
-      el('div', { class: 'h-stack' }, [
-        el('div', { style: 'flex:1;' }, [el('label', { text: 'Title' }), titleInput]),
-        el('div', { style: 'width:160px;' }, [el('label', { text: 'Date' }), dateInput]),
-        el('div', { style: 'width:140px;' }, [el('label', { text: 'Max score' }), maxInput])
+  const selected = classObj.assessments.find(a => a.assessmentId === state.selectedAssessmentId);
+  let editCard = null;
+  if (selected) {
+    const editTitle = el('input', { value: selected.title, placeholder: 'Assessment title' });
+    const editDate = el('input', { type: 'date', value: selected.date || '' });
+    const editMax = el('input', { type: 'number', min: '0', value: selected.maxScore ?? '' });
+    editCard = el('div', { class: 'card stack' }, [
+      el('div', { class: 'h-stack', style: 'justify-content: space-between;' }, [
+        el('div', { class: 'title', text: `Edit ${selected.title}` }),
+        el('div', { class: 'h-stack' }, [
+          el('button', { class: 'secondary', onclick: () => updateAssessment(classObj.classId, selected.assessmentId, { title: editTitle.value, date: editDate.value, maxScore: Number(editMax.value) }) }, 'Save changes'),
+          el('button', { class: 'danger secondary', onclick: () => deleteAssessment(classObj.classId, selected.assessmentId) }, 'Delete assessment')
+        ])
       ]),
-      el('button', {
-        onclick: () => {
-          const title = titleInput.value.trim();
-          const date = dateInput.value;
-          const max = Number(maxInput.value);
-          if (!title || Number.isNaN(max)) { setStatus('Enter title and max score.', true); return; }
-          createAssessment(classObj.classId, { title, date, maxScore: max });
-          titleInput.value = '';
-          dateInput.value = '';
-          maxInput.value = '';
-        }
-      }, 'Create assessment')
+      el('div', { class: 'h-stack' }, [
+        el('div', { style: 'flex:1;' }, [el('label', { text: 'Title' }), editTitle]),
+        el('div', { style: 'width:160px;' }, [el('label', { text: 'Date' }), editDate]),
+        el('div', { style: 'width:140px;' }, [el('label', { text: 'Max score' }), editMax])
+      ])
+    ]);
+  }
+
+  return el('div', { class: 'stack' }, [
+    el('div', { class: 'card stack' }, [
+      el('div', { class: 'title', text: 'Assessments' }),
+      assessmentList.length ? el('div', { class: 'stack' }, assessmentList) : el('div', { class: 'muted' }, 'No assessments yet.'),
+      el('div', { class: 'stack', style: 'border-top:1px solid var(--border); padding-top:12px;' }, [
+        el('div', { class: 'title', text: 'Create new assessment' }),
+        el('div', { class: 'h-stack' }, [
+          el('div', { style: 'flex:1;' }, [el('label', { text: 'Title' }), titleInput]),
+          el('div', { style: 'width:160px;' }, [el('label', { text: 'Date' }), dateInput]),
+          el('div', { style: 'width:140px;' }, [el('label', { text: 'Max score' }), maxInput])
+        ]),
+        el('button', {
+          onclick: () => {
+            const title = titleInput.value.trim();
+            const date = dateInput.value;
+            const max = Number(maxInput.value);
+            if (!title || Number.isNaN(max)) { setStatus('Enter title and max score.', true); return; }
+            createAssessment(classObj.classId, { title, date, maxScore: max });
+            titleInput.value = '';
+            dateInput.value = '';
+            maxInput.value = '';
+          }
+        }, 'Create assessment')
+      ])
+    ]),
+    editCard
+  ]);
+}
+
+function renderClassListCard() {
+  if (!state.data.classes.length) return el('div', { class: 'card' }, 'No classes yet. Create one to begin.');
+  const rows = state.data.classes.map(c => {
+    const nameInput = el('input', { value: c.className });
+    return el('tr', {}, [
+      el('td', {}, nameInput),
+      el('td', {}, `${c.students.length} students`),
+      el('td', {}, el('div', { class: 'h-stack' }, [
+        el('button', { class: state.selectedClassId === c.classId ? '' : 'secondary', onclick: () => { state.selectedClassId = c.classId; state.selectedAssessmentId = null; render(); } }, 'Open'),
+        el('button', { class: 'secondary', onclick: () => updateClassName(c.classId, nameInput.value) }, 'Save name'),
+        el('button', { class: 'danger secondary', onclick: () => deleteClass(c.classId) }, 'Delete class')
+      ]))
+    ]);
+  });
+
+  return el('div', { class: 'card stack' }, [
+    el('div', { class: 'title', text: 'Existing classes' }),
+    el('table', { class: 'table' }, [
+      el('thead', {}, el('tr', {}, [el('th', {}, 'Class name'), el('th', {}, 'Students'), el('th', {}, 'Actions')])),
+      el('tbody', {}, rows)
     ])
   ]);
+}
+
+function renderClassSelectorCard() {
+  return el('div', { class: 'card stack' }, [
+    el('div', { class: 'h-stack' }, [
+      el('div', { style: 'flex:1;' }, [
+        el('label', { text: 'Select class' }),
+        el('select', {
+          value: state.selectedClassId || '',
+          onchange: e => { state.selectedClassId = e.target.value; state.selectedAssessmentId = null; render(); }
+        }, [el('option', { value: '', text: 'Choose a class' }), ...classOptions()])
+      ])
+    ])
+  ]);
+}
+
+function renderClassTab() {
+  return el('div', { class: 'stack' }, [renderCreateClassForm(), renderClassListCard()]);
+}
+
+function renderStudentTab(classObj) {
+  return el('div', { class: 'stack' }, [renderClassSelectorCard(), renderRosterSection(classObj), renderImportSection(classObj)]);
+}
+
+function renderAssessmentTab(classObj) {
+  return el('div', { class: 'stack' }, [renderClassSelectorCard(), renderAssessmentsSection(classObj), renderScoresSection(classObj)]);
 }
 
 function renderScoresSection(classObj) {
@@ -703,24 +846,26 @@ function renderScoresSection(classObj) {
 function renderTeacherPanel() {
   ensureDefaultSelections();
   const classObj = state.data.classes.find(c => c.classId === state.selectedClassId);
+
+  const tabButtons = el('div', { class: 'tabs' }, [
+    el('button', { class: state.teacherTab === 'classes' ? 'tab active' : 'tab secondary', onclick: () => { state.teacherTab = 'classes'; render(); } }, 'Class management'),
+    el('button', { class: state.teacherTab === 'students' ? 'tab active' : 'tab secondary', onclick: () => { state.teacherTab = 'students'; render(); } }, 'Student IDs'),
+    el('button', { class: state.teacherTab === 'assessments' ? 'tab active' : 'tab secondary', onclick: () => { state.teacherTab = 'assessments'; render(); } }, 'Assessments')
+  ]);
+
+  let content;
+  if (state.teacherTab === 'classes') {
+    content = renderClassTab();
+  } else if (state.teacherTab === 'students') {
+    content = renderStudentTab(classObj);
+  } else {
+    content = renderAssessmentTab(classObj);
+  }
+
   return el('main', {}, [
     renderStatus(),
-    renderCreateClassForm(),
-    el('div', { class: 'card stack' }, [
-      el('div', { class: 'h-stack' }, [
-        el('div', { style: 'flex:1;' }, [
-          el('label', { text: 'Select class' }),
-          el('select', {
-            value: state.selectedClassId || '',
-            onchange: e => { state.selectedClassId = e.target.value; state.selectedAssessmentId = null; render(); }
-          }, [el('option', { value: '', text: 'Choose a class' }), ...classOptions()])
-        ])
-      ])
-    ]),
-    renderRosterSection(classObj),
-    renderImportSection(classObj),
-    renderAssessmentsSection(classObj),
-    renderScoresSection(classObj),
+    tabButtons,
+    content,
     renderStatus()
   ]);
 }
