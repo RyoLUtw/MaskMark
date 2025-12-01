@@ -1,4 +1,4 @@
-const CLIENT_ID = 'REPLACE_WITH_CLIENT_ID.apps.googleusercontent.com';
+const CLIENT_ID = '332987792434-u7r3hdl46asbqo0si3ngqu46kdbgf2at.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 const DRIVE_FILE_NAME = 'maskmark-data.json';
 
