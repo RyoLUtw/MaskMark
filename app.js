@@ -29,6 +29,7 @@ const el = (tag, attrs = {}, children = []) => {
     else if (key === 'text') element.textContent = value;
     else if (key === 'html') element.innerHTML = value;
     else if (key === 'disabled') element.disabled = Boolean(value);
+    else if (key === 'value') element.value = value;
     else if (key.startsWith('on') && typeof value === 'function') element[key] = value;
     else element.setAttribute(key, value);
   });
@@ -255,7 +256,7 @@ function createClass({ name, size }) {
   const digits = String(size).length;
   const students = Array.from({ length: size }).map((_, idx) => {
     const num = String(idx + 1).padStart(digits, '0');
-    return { studentId: `S${num}`, secretId: '' };
+    return { studentId: num, secretId: '' };
   });
   const newClass = {
     classId: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
@@ -434,10 +435,10 @@ function applyScoreImport(classId, assessmentId, rows, mode) {
       const val = Number(raw);
       if (!Number.isNaN(val)) assess.scores[s.studentId] = val;
     });
-  } else if (mode === 'secret-id') {
+  } else if (mode === 'student-id') {
     rows.forEach(r => {
-      const [secret, scoreRaw] = r;
-      const student = classObj.students.find(s => s.secretId === secret);
+      const [studentId, scoreRaw] = r;
+      const student = classObj.students.find(s => s.studentId === studentId);
       if (!student) return;
       if (scoreRaw === undefined || scoreRaw === '') return;
       const val = Number(scoreRaw);
@@ -550,12 +551,12 @@ function renderProjector() {
 }
 
 function classOptions() {
-  return state.data.classes.map(c => el('option', { value: c.classId, text: c.className }));
+  return state.data.classes.map(c => el('option', { value: c.classId, text: c.className, selected: state.selectedClassId === c.classId }));
 }
 
 function assessmentOptions(classObj) {
   if (!classObj) return [el('option', { value: '', text: 'No assessments' })];
-  const opts = classObj.assessments.map(a => el('option', { value: a.assessmentId, text: a.title }));
+  const opts = classObj.assessments.map(a => el('option', { value: a.assessmentId, text: a.title, selected: state.selectedAssessmentId === a.assessmentId }));
   if (!opts.length) opts.push(el('option', { value: '', text: 'No assessments' }));
   return opts;
 }
@@ -812,10 +813,10 @@ function renderScoresSection(classObj) {
     ]);
   });
 
-  const pasteArea = el('textarea', { placeholder: 'Paste scores (single column for row order; or SecretID,Score for secret-id mode)' });
+  const pasteArea = el('textarea', { placeholder: 'Paste scores (single column for row order; or StudentID,Score for student-id mode)' });
   const modeSelect = el('select', {}, [
     el('option', { value: 'row-order', text: 'Match by row order' }),
-    el('option', { value: 'secret-id', text: 'Match by secret ID' })
+    el('option', { value: 'student-id', text: 'Match by student ID' })
   ]);
 
   return el('div', { class: 'card stack' }, [
