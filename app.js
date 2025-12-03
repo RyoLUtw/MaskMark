@@ -455,10 +455,12 @@ function stopIdleTimer() {
 function resetIdleTimer() {
   if (!state.signedIn) return;
   stopIdleTimer();
+  const timeoutMs = state.view === 'projector' ? 180_000 : 60_000;
+  const minutes = timeoutMs / 60_000;
   idleTimeoutId = setTimeout(() => {
-    setStatus('已閒置超過 1 分鐘，已自動登出。');
+    setStatus(`已閒置超過 ${minutes} 分鐘，已自動登出。`);
     signOut();
-  }, 60_000);
+  }, timeoutMs);
 }
 
 function createClass({ name, size }) {
@@ -686,10 +688,10 @@ function renderHeader() {
   return el('header', {}, [
     el('div', { class: 'title', text: 'MaskMark – Anonymous Classroom Scores' }),
     el('div', { class: 'controls' }, [
-      el('button', { class: state.view === 'projector' ? '' : 'secondary', onclick: () => { state.view = 'projector'; render(); } }, 'Projector Mode'),
-      el('button', { class: state.view === 'showcode' ? '' : 'secondary', onclick: () => { state.view = 'showcode'; resetProjectorCycle(); resetShowCodeProgress(); render(); } }, 'Show Code Mode'),
-      el('button', { class: state.view === 'individual' ? '' : 'secondary', onclick: () => { state.view = 'individual'; resetProjectorCycle(); state.individualRevealed = false; render(); } }, 'Individual Mode'),
-      el('button', { class: state.view === 'teacher' ? '' : 'secondary', onclick: () => { state.view = 'teacher'; resetProjectorCycle(); render(); } }, 'Teacher Panel'),
+      el('button', { class: state.view === 'projector' ? '' : 'secondary', onclick: () => { state.view = 'projector'; render(); resetIdleTimer(); } }, 'Projector Mode'),
+      el('button', { class: state.view === 'showcode' ? '' : 'secondary', onclick: () => { state.view = 'showcode'; resetProjectorCycle(); resetShowCodeProgress(); render(); resetIdleTimer(); } }, 'Show Code Mode'),
+      el('button', { class: state.view === 'individual' ? '' : 'secondary', onclick: () => { state.view = 'individual'; resetProjectorCycle(); state.individualRevealed = false; render(); resetIdleTimer(); } }, 'Individual Mode'),
+      el('button', { class: state.view === 'teacher' ? '' : 'secondary', onclick: () => { state.view = 'teacher'; resetProjectorCycle(); render(); resetIdleTimer(); } }, 'Teacher Panel'),
       el('span', { class: 'badge', text: state.userEmail }),
       el('button', { class: 'secondary', onclick: signOut }, 'Sign out')
     ])
