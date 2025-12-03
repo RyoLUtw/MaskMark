@@ -95,6 +95,7 @@ const state = {
 
 let tokenClient = null;
 let projectorInterval = null;
+let idleTimeoutId = null;
 
 const el = (tag, attrs = {}, children = []) => {
   const element = document.createElement(tag);
@@ -207,6 +208,7 @@ function signOut() {
   state.showCodeRevealed = false;
   state.showCodeAwaitingNav = false;
   resetProjectorCycle();
+  stopIdleTimer();
   localStorage.setItem('maskmark_stay_signed_in', '0');
   render();
 }
@@ -427,6 +429,7 @@ async function handleTokenResponse(resp, { silent }) {
     await fetchUserEmail();
     await loadDataFromDrive();
     setStatus('Signed in.');
+    resetIdleTimer();
     render();
   } catch (err) {
     console.error(err);
@@ -440,6 +443,22 @@ function maybeAutoSignIn() {
   logStep('Attempting silent sign-in with saved session...');
   tokenClient.callback = resp => handleTokenResponse(resp, { silent: true });
   tokenClient.requestAccessToken({ prompt: '' });
+}
+
+function stopIdleTimer() {
+  if (idleTimeoutId) {
+    clearTimeout(idleTimeoutId);
+    idleTimeoutId = null;
+  }
+}
+
+function resetIdleTimer() {
+  if (!state.signedIn) return;
+  stopIdleTimer();
+  idleTimeoutId = setTimeout(() => {
+    setStatus('已閒置超過 1 分鐘，已自動登出。');
+    signOut();
+  }, 60_000);
 }
 
 function createClass({ name, size }) {
@@ -1299,6 +1318,10 @@ function render() {
           : renderTeacherPanel();
   app.appendChild(view);
 }
+
+['click', 'mousemove', 'keydown', 'touchstart', 'scroll'].forEach(evt => {
+  document.addEventListener(evt, () => resetIdleTimer(), true);
+});
 
 document.addEventListener('DOMContentLoaded', () => {
   logStep('DOM fully loaded, initial render.');
