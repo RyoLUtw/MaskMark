@@ -24,12 +24,13 @@ let tokenClient = null;
 
 const el = (tag, attrs = {}, children = []) => {
   const element = document.createElement(tag);
+  let valueAttr;
   Object.entries(attrs).forEach(([key, value]) => {
     if (key === 'class') element.className = value;
     else if (key === 'text') element.textContent = value;
     else if (key === 'html') element.innerHTML = value;
     else if (key === 'disabled') element.disabled = Boolean(value);
-    else if (key === 'value') element.value = value;
+    else if (key === 'value') valueAttr = value;
     else if (key.startsWith('on') && typeof value === 'function') element[key] = value;
     else element.setAttribute(key, value);
   });
@@ -40,6 +41,7 @@ const el = (tag, attrs = {}, children = []) => {
       element.appendChild(document.createTextNode(String(child)));
     }
   });
+  if (valueAttr !== undefined) element.value = valueAttr;
   return element;
 };
 
