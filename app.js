@@ -138,50 +138,50 @@ function gapiLoaded() {
 
 async function initGapiClient() {
   try {
-    logStep('Initializing gapi client...');
+    logStep('正在初始化 gapi 用戶端...');
     await gapi.client.init({ discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'] });
     state.gapiReady = true;
-    logStep('gapi client ready.');
+    logStep('gapi 用戶端已就緒。');
     render();
     maybeAutoSignIn();
   } catch (err) {
     console.error(err);
-    setStatus('Failed to initialize Google API. Please refresh.', true);
+    setStatus('初始化 Google API 失敗，請重新整理。', true);
   }
 }
 
 function gisLoaded() {
-  logStep('Google Identity Services script loaded, creating token client.');
+  logStep('Google Identity Services 腳本已載入，建立權杖用戶端。');
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
     callback: () => {}
   });
   state.gisReady = true;
-  logStep('GIS token client ready.');
+  logStep('GIS 權杖用戶端已就緒。');
   render();
   maybeAutoSignIn();
 }
 
 async function fetchUserEmail() {
   try {
-    logStep('Fetching user email...');
+    logStep('正在取得使用者電子郵件...');
     const resp = await gapi.client.request({ path: 'https://www.googleapis.com/oauth2/v3/userinfo' });
     state.userEmail = resp.result.email || '';
-    logStep('User email loaded:', state.userEmail);
+    logStep('已取得使用者電子郵件:', state.userEmail);
   } catch (err) {
-    console.error('Failed to fetch user info', err);
+    console.error('無法取得使用者資訊', err);
     state.userEmail = '';
   }
 }
 
 async function signIn() {
   if (!state.gapiReady || !state.gisReady) {
-    setStatus('Google libraries are still loading. Please wait.', true);
+    setStatus('Google 函式庫仍在載入，請稍候。', true);
     return;
   }
-  logStep('Starting sign-in request...');
-  setStatus('Starting Google sign-in...');
+  logStep('開始要求登入...');
+  setStatus('正在啟動 Google 登入...');
   tokenClient.callback = resp => handleTokenResponse(resp, { silent: false });
   tokenClient.requestAccessToken({ prompt: state.signedIn ? '' : 'consent' });
 }
@@ -336,8 +336,8 @@ function resetShowCodeProgress() {
 
 async function loadDataFromDrive() {
   try {
-    logStep('Loading data from Drive...');
-    setStatus('Loading data...');
+    logStep('正在從 Drive 載入資料...');
+    setStatus('資料載入中...');
     const listResp = await gapi.client.drive.files.list({
       spaces: 'appDataFolder',
       fields: 'files(id, name)',
@@ -347,7 +347,7 @@ async function loadDataFromDrive() {
     if (!files.length) {
       state.data = { classes: [] };
       state.dataFileId = null;
-      setStatus('No data found. Start by creating a class.');
+      setStatus('尚無資料，請先建立班級。');
       ensureDefaultSelections();
       render();
       return;
@@ -357,20 +357,20 @@ async function loadDataFromDrive() {
     logStep('Found data file', file.id, 'fetching contents...');
     const dataResp = await gapi.client.drive.files.get({ fileId: file.id, alt: 'media' });
     state.data = dataResp.result || { classes: [] };
-    logStep('Data loaded from Drive.');
+    logStep('已從 Drive 載入資料。');
     ensureDefaultSelections();
-    setStatus('Data loaded.');
+    setStatus('資料已載入。');
     render();
   } catch (err) {
     console.error(err);
-    setStatus('Failed to load data from Drive.', true);
+    setStatus('從 Drive 載入資料失敗。', true);
   }
 }
 
 async function saveDataToDrive() {
   try {
-    logStep('Saving data to Drive...');
-    setStatus('Saving...');
+    logStep('正在將資料儲存到 Drive...');
+    setStatus('儲存中...');
     const metadata = state.dataFileId
       ? { name: DRIVE_FILE_NAME }
       : { name: DRIVE_FILE_NAME, parents: ['appDataFolder'] };
@@ -388,7 +388,7 @@ async function saveDataToDrive() {
       closeDelim;
 
     if (state.dataFileId) {
-      logStep('Updating existing data file', state.dataFileId);
+      logStep('更新既有資料檔案', state.dataFileId);
       await gapi.client.request({
         path: `/upload/drive/v3/files/${state.dataFileId}`,
         method: 'PATCH',
@@ -397,7 +397,7 @@ async function saveDataToDrive() {
         body: multipartRequestBody
       });
     } else {
-      logStep('Creating new data file in appDataFolder');
+      logStep('在 appDataFolder 中建立新資料檔案');
       const createResp = await gapi.client.request({
         path: '/upload/drive/v3/files',
         method: 'POST',
@@ -407,40 +407,40 @@ async function saveDataToDrive() {
       });
       state.dataFileId = createResp.result.id;
     }
-    setStatus('Saved to Drive.');
+    setStatus('已儲存到 Drive。');
   } catch (err) {
     console.error(err);
-    setStatus('Failed to save to Drive.', true);
+    setStatus('儲存到 Drive 失敗。', true);
   }
 }
 
 async function handleTokenResponse(resp, { silent }) {
   if (resp.error) {
     console.error(resp);
-    if (!silent) setStatus('Sign-in failed. Please try again.', true);
+    if (!silent) setStatus('登入失敗，請再試一次。', true);
     return;
   }
   try {
-    logStep('Token received, setting gapi token.');
+    logStep('已收到權杖，設定 gapi token。');
     gapi.client.setToken({ access_token: resp.access_token });
     state.signedIn = true;
     state.view = 'projector';
     if (state.staySignedIn) localStorage.setItem('maskmark_stay_signed_in', '1');
     await fetchUserEmail();
     await loadDataFromDrive();
-    setStatus('Signed in.');
+    setStatus('已登入。');
     resetIdleTimer();
     render();
   } catch (err) {
     console.error(err);
-    if (!silent) setStatus('Sign-in failed. Please try again.', true);
+    if (!silent) setStatus('登入失敗，請再試一次。', true);
   }
 }
 
 function maybeAutoSignIn() {
   if (!state.gapiReady || !state.gisReady || state.signedIn || !state.staySignedIn || state.autoSignInAttempted) return;
   state.autoSignInAttempted = true;
-  logStep('Attempting silent sign-in with saved session...');
+  logStep('嘗試使用已儲存的工作階段靜默登入...');
   tokenClient.callback = resp => handleTokenResponse(resp, { silent: true });
   tokenClient.requestAccessToken({ prompt: '' });
 }
@@ -487,7 +487,7 @@ function updateClassName(classId, name) {
   const classObj = state.data.classes.find(c => c.classId === classId);
   if (!classObj) return;
   const trimmed = name.trim();
-  if (!trimmed) { setStatus('Class name cannot be empty.', true); return; }
+  if (!trimmed) { setStatus('班級名稱不得為空。', true); return; }
   classObj.className = trimmed;
   saveDataToDrive();
   render();
@@ -542,7 +542,7 @@ function applySecretIdChanges(classId) {
   if (!classObj) return;
   const dups = validateSecretIds(classObj);
   if (dups.size) {
-    setStatus('Duplicate secret IDs found. Please resolve.', true);
+    setStatus('找到重複的暗號 ID，請先處理。', true);
     render();
     return;
   }
@@ -571,7 +571,7 @@ function updateAssessment(classId, assessmentId, { title, date, maxScore }) {
   const assess = classObj?.assessments.find(a => a.assessmentId === assessmentId);
   if (!assess) return;
   const trimmedTitle = title.trim();
-  if (!trimmedTitle || Number.isNaN(maxScore)) { setStatus('Enter a title and numeric max score.', true); return; }
+  if (!trimmedTitle || Number.isNaN(maxScore)) { setStatus('請輸入標題與數字最大分數。', true); return; }
   assess.title = trimmedTitle;
   assess.date = date;
   assess.maxScore = Number(maxScore);
@@ -630,7 +630,7 @@ function applySecretIdImport(classId, rows, mode, options) {
   }
   const dups = validateSecretIds(classObj);
   if (dups.size) {
-    setStatus('Import complete with duplicates detected. Resolve before saving.', true);
+    setStatus('匯入完成但偵測到重複暗號，請先處理再儲存。', true);
   } else {
     saveDataToDrive();
   }
@@ -670,14 +670,14 @@ function renderLanding() {
   staySignedCheckbox.checked = state.staySignedIn;
   return el('main', {}, [
     el('div', { class: 'card stack' }, [
-      el('div', { class: 'title', text: 'MaskMark – Anonymous Classroom Scores' }),
-      el('p', { text: 'Sign in with Google to manage classes, secret IDs, and assessment scores. No student names are stored.' }),
+      el('div', { class: 'title', text: 'MaskMark－匿名成績系統' }),
+      el('p', { text: '請使用 Google 登入以管理班級、暗號與評量分數；系統不會儲存學生真實姓名。' }),
       el('div', { class: 'h-stack' }, [
-        el('button', { disabled: !state.gapiReady || !state.gisReady, onclick: signIn }, 'Sign in with Google'),
-        (!state.gapiReady || !state.gisReady) && el('span', { class: 'muted small', text: 'Loading Google Sign-In...' })
+        el('button', { disabled: !state.gapiReady || !state.gisReady, onclick: signIn }, '以 Google 登入'),
+        (!state.gapiReady || !state.gisReady) && el('span', { class: 'muted small', text: '正在載入 Google 登入...' })
       ]),
-      el('label', { class: 'h-stack', style: 'gap:8px; align-items:center;' }, [staySignedCheckbox, el('span', { text: 'Stay signed in on this device' })]),
-      el('div', { class: 'muted small' }, `gapi ready: ${state.gapiReady} • GIS ready: ${state.gisReady}`),
+      el('label', { class: 'h-stack', style: 'gap:8px; align-items:center;' }, [staySignedCheckbox, el('span', { text: '此裝置保持登入' })]),
+      el('div', { class: 'muted small' }, `gapi 就緒：${state.gapiReady} • GIS 就緒：${state.gisReady}`),
       state.error && el('div', { class: 'status error', text: state.error })
     ])
   ]);
@@ -686,14 +686,14 @@ function renderLanding() {
 function renderHeader() {
   if (!state.signedIn) return null;
   return el('header', {}, [
-    el('div', { class: 'title', text: 'MaskMark – Anonymous Classroom Scores' }),
+    el('div', { class: 'title', text: 'MaskMark－匿名成績系統' }),
     el('div', { class: 'controls' }, [
-      el('button', { class: state.view === 'projector' ? '' : 'secondary', onclick: () => { state.view = 'projector'; render(); resetIdleTimer(); } }, 'Projector Mode'),
-      el('button', { class: state.view === 'showcode' ? '' : 'secondary', onclick: () => { state.view = 'showcode'; resetProjectorCycle(); resetShowCodeProgress(); render(); resetIdleTimer(); } }, 'Show Code Mode'),
-      el('button', { class: state.view === 'individual' ? '' : 'secondary', onclick: () => { state.view = 'individual'; resetProjectorCycle(); state.individualRevealed = false; render(); resetIdleTimer(); } }, 'Individual Mode'),
-      el('button', { class: state.view === 'teacher' ? '' : 'secondary', onclick: () => { state.view = 'teacher'; resetProjectorCycle(); render(); resetIdleTimer(); } }, 'Teacher Panel'),
+      el('button', { class: state.view === 'projector' ? '' : 'secondary', onclick: () => { state.view = 'projector'; render(); resetIdleTimer(); } }, '投影模式'),
+      el('button', { class: state.view === 'showcode' ? '' : 'secondary', onclick: () => { state.view = 'showcode'; resetProjectorCycle(); resetShowCodeProgress(); render(); resetIdleTimer(); } }, '顯碼模式'),
+      el('button', { class: state.view === 'individual' ? '' : 'secondary', onclick: () => { state.view = 'individual'; resetProjectorCycle(); state.individualRevealed = false; render(); resetIdleTimer(); } }, '個別模式'),
+      el('button', { class: state.view === 'teacher' ? '' : 'secondary', onclick: () => { state.view = 'teacher'; resetProjectorCycle(); render(); resetIdleTimer(); } }, '教師管理'),
       el('span', { class: 'badge', text: state.userEmail }),
-      el('button', { class: 'secondary', onclick: signOut }, 'Sign out')
+      el('button', { class: 'secondary', onclick: signOut }, '登出')
     ])
   ]);
 }
@@ -707,8 +707,8 @@ function renderProjector() {
   if (!state.data.classes.length) {
     return el('main', {}, [
       el('div', { class: 'card projector stack' }, [
-        el('div', { class: 'title', text: 'Projector Mode' }),
-        el('p', { text: 'No data yet. Create classes and assessments in the Teacher Panel.' })
+        el('div', { class: 'title', text: '投影模式' }),
+        el('p', { text: '尚無資料，請在教師管理中建立班級與評量。' })
       ])
     ]);
   }
@@ -721,7 +721,7 @@ function renderProjector() {
   const currentGroup = sortedStudents.slice(currentStart, currentStart + 5);
   const selectors = el('div', { class: 'h-stack' }, [
     el('div', { style: 'min-width: 200px;' }, [
-      el('label', { text: 'Class' }),
+      el('label', { text: '班級' }),
       el('select', {
         value: state.selectedClassId,
         onchange: e => {
@@ -733,7 +733,7 @@ function renderProjector() {
       }, classOptions())
     ]),
     el('div', { style: 'min-width: 200px;' }, [
-      el('label', { text: 'Assessment' }),
+      el('label', { text: '評量' }),
       el('select', {
         value: state.selectedAssessmentId || '',
         onchange: e => { state.selectedAssessmentId = e.target.value; resetProjectorCycle(); render(); }
@@ -743,24 +743,24 @@ function renderProjector() {
 
   let table;
   if (!classObj || !assess) {
-    table = el('div', { class: 'notice', text: 'Select a class and assessment to display scores.' });
+    table = el('div', { class: 'notice', text: '請選擇班級與評量以顯示成績。' });
   } else if (!sortedStudents.length) {
-    table = el('div', { class: 'notice', text: 'No students in this class yet.' });
+    table = el('div', { class: 'notice', text: '此班級尚無學生。' });
   } else {
-    const phaseLabel = state.projectorPhase === 'scores' ? 'Scores showing' : state.projectorPhase === 'ids' ? 'Secret IDs showing' : state.projectorPhase === 'done' ? 'Cycle complete' : 'Waiting to start';
-    const timerLabel = state.projectorRunning ? `${state.projectorTimer}s remaining` : state.projectorPhase === 'done' ? 'Finished all students.' : 'Ready to start';
-    const groupLabel = totalGroups ? `Group ${Math.floor(currentStart / 5) + 1} of ${totalGroups}` : '';
+    const phaseLabel = state.projectorPhase === 'scores' ? '顯示分數' : state.projectorPhase === 'ids' ? '顯示暗號' : state.projectorPhase === 'done' ? '全部播放完畢' : '待開始';
+    const timerLabel = state.projectorRunning ? `${state.projectorTimer} 秒剩餘` : state.projectorPhase === 'done' ? '已播放所有學生。' : '可開始播放';
+    const groupLabel = totalGroups ? `第 ${Math.floor(currentStart / 5) + 1} / ${totalGroups} 組` : '';
     const cells = currentGroup.map(s => {
       const score = assess.scores[s.studentId];
       const showScore = state.projectorPhase === 'scores';
       return el('div', { class: 'projector-cell' }, [
         el('div', { class: 'projector-secret', text: s.secretId || '—' }),
-        el('div', { class: 'projector-score', text: showScore ? (score === null || score === undefined ? '—' : score) : 'Hidden' })
+        el('div', { class: 'projector-score', text: showScore ? (score === null || score === undefined ? '—' : score) : '隱藏中' })
       ]);
     });
     table = el('div', { class: 'stack' }, [
       el('div', { class: 'h-stack projector-controls' }, [
-        el('button', { onclick: startProjectorCycle, disabled: !sortedStudents.length || !assess }, state.projectorRunning ? 'Restart sequence' : 'Start sequence'),
+        el('button', { onclick: startProjectorCycle, disabled: !sortedStudents.length || !assess }, state.projectorRunning ? '重新開始' : '開始播放'),
         el('div', { class: 'muted', text: `${phaseLabel}${groupLabel ? ` • ${groupLabel}` : ''} • ${timerLabel}` })
       ]),
       el('div', { class: 'projector-grid' }, cells)
@@ -769,7 +769,7 @@ function renderProjector() {
 
   return el('main', {}, [
     el('div', { class: 'projector card stack' }, [
-      el('div', { class: 'title', text: 'Projector Mode' }),
+      el('div', { class: 'title', text: '投影模式' }),
       selectors,
       table
     ])
@@ -808,8 +808,8 @@ function renderShowCode() {
   if (!state.data.classes.length) {
     return el('main', {}, [
       el('div', { class: 'card stack' }, [
-        el('div', { class: 'title', text: 'Show Code Mode' }),
-        el('p', { text: 'No classes yet. Create a class in the Teacher Panel.' })
+        el('div', { class: 'title', text: '顯碼模式' }),
+        el('p', { text: '尚無班級，請到教師管理建立班級。' })
       ])
     ]);
   }
@@ -821,8 +821,8 @@ function renderShowCode() {
   if (!classObj || !students.length) {
     return el('main', {}, [
       el('div', { class: 'card stack' }, [
-        el('div', { class: 'title', text: 'Show Code Mode' }),
-        el('p', { text: 'Add students to this class to reveal codes.' })
+        el('div', { class: 'title', text: '顯碼模式' }),
+        el('p', { text: '請為此班級新增學生後再顯示暗號。' })
       ])
     ]);
   }
@@ -833,7 +833,7 @@ function renderShowCode() {
 
   const classSelector = el('div', { class: 'h-stack' }, [
     el('div', { style: 'min-width: 220px;' }, [
-      el('label', { text: 'Class' }),
+      el('label', { text: '班級' }),
       el('select', {
         value: state.selectedClassId,
         onchange: e => { handleClassSelection(e.target.value); render(); }
@@ -844,14 +844,14 @@ function renderShowCode() {
   const groupStart = Math.floor(state.showCodeIndex / 5) * 5;
   const groupEnd = Math.min(groupStart + 4, students.length - 1);
   const instruction = el('div', { class: 'card stack showcode-card' }, [
-    el('div', { class: 'title', text: 'Show Code – Instruction' }),
+    el('div', { class: 'title', text: '顯碼模式－指示畫面' }),
     el('p', {
-      html: `Ask the following student to line up then come to you one by one:<br/>Students with ID ${students[groupStart].studentId} to ${students[groupEnd].studentId}`
+      html: `請讓以下學生排隊，依序上前：<br/>學生學號 ${students[groupStart].studentId} 至 ${students[groupEnd].studentId}`
     }),
-    el('p', { class: 'muted', text: 'Click Next when the first student of the group is in front of you.' }),
+    el('p', { class: 'muted', text: '當這組的第一位學生站在您面前時，請按「下一位」。' }),
     el('button', {
       onclick: () => { state.showCodeStage = 'credential'; state.showCodeRevealed = false; state.showCodeAwaitingNav = false; render(); }
-    }, 'Next')
+    }, '下一位')
   ]);
 
   const currentStudent = students[state.showCodeIndex];
@@ -860,7 +860,7 @@ function renderShowCode() {
       class: 'secondary',
       disabled: state.showCodeIndex === 0,
       onclick: () => { setShowCodeIndex(state.showCodeIndex - 1, students.length); render(); }
-    }, 'Previous'),
+    }, '上一位'),
     el('div', { style: 'min-width: 180px;' }, [
       el('select', {
         value: currentStudent.studentId,
@@ -874,27 +874,27 @@ function renderShowCode() {
       class: 'secondary',
       disabled: state.showCodeIndex >= students.length - 1,
       onclick: () => { setShowCodeIndex(state.showCodeIndex + 1, students.length); render(); }
-    }, 'Next')
+    }, '下一位')
   ]);
 
   const credentialBody = state.showCodeRevealed
     ? el('div', { class: 'stack reveal-card' }, [
-        el('div', { class: 'title', text: `Student ID: ${currentStudent.studentId}` }),
+        el('div', { class: 'title', text: `學生學號：${currentStudent.studentId}` }),
         el('div', { class: 'big-secret', text: currentStudent.secretId || '—' }),
         el('button', {
           onclick: () => handleShowCodeConfirm(students.length)
-        }, 'Confirm and move on')
+        }, '確認並前往下一位')
       ])
-    : el('div', { class: 'stack' }, [
-        el('p', { text: `Click reveal when student is ready to see the credentials for student ID: ${currentStudent.studentId}` }),
-        el('button', { onclick: () => { state.showCodeRevealed = true; state.showCodeAwaitingNav = false; render(); } }, 'Reveal'),
-        state.showCodeAwaitingNav && el('div', { class: 'muted', text: 'Credential hidden. Use navigation to move to the next student.' })
-      ]);
+      : el('div', { class: 'stack' }, [
+          el('p', { text: `學生學號 ${currentStudent.studentId} 已準備好查看暗號時再按「顯示」。` }),
+          el('button', { onclick: () => { state.showCodeRevealed = true; state.showCodeAwaitingNav = false; render(); } }, '顯示'),
+          state.showCodeAwaitingNav && el('div', { class: 'muted', text: '暗號已隱藏，請使用導覽切換學生。' })
+        ]);
 
-  const credentialNote = state.showCodeRevealed ? null : el('div', { class: 'muted small' }, 'Use navigation to move between students.');
+  const credentialNote = state.showCodeRevealed ? null : el('div', { class: 'muted small' }, '可用導覽快速切換學生。');
 
   const credentialCard = el('div', { class: 'card stack showcode-card' }, [
-    el('div', { class: 'title', text: 'Show Code – Credential' }),
+    el('div', { class: 'title', text: '顯碼模式－暗號畫面' }),
     navControls,
     credentialBody,
     credentialNote
@@ -909,8 +909,8 @@ function renderIndividual() {
   if (!state.data.classes.length) {
     return el('main', {}, [
       el('div', { class: 'card stack' }, [
-        el('div', { class: 'title', text: 'Individual Mode' }),
-        el('p', { text: 'No data yet. Create classes and assessments in the Teacher Panel.' })
+        el('div', { class: 'title', text: '個別模式' }),
+        el('p', { text: '尚無資料，請在教師管理中建立班級與評量。' })
       ])
     ]);
   }
@@ -926,7 +926,7 @@ function renderIndividual() {
   const classSelect = el('select', {
     value: state.selectedClassId || '',
     onchange: e => { handleClassSelection(e.target.value); ensureDefaultSelections(); render(); }
-  }, [el('option', { value: '', text: 'Choose a class' }), ...classOptions()]);
+  }, [el('option', { value: '', text: '請選擇班級' }), ...classOptions()]);
 
   const assessSelect = el('select', {
     value: state.selectedAssessmentId || '',
@@ -937,42 +937,42 @@ function renderIndividual() {
   const studentSelect = el('select', {
     value: state.individualStudentId || '',
     onchange: e => { state.individualStudentId = e.target.value; state.individualRevealed = false; render(); }
-  }, [el('option', { value: '', text: 'Choose student ID' }), ...studentOptions]);
+  }, [el('option', { value: '', text: '選擇學生學號' }), ...studentOptions]);
 
   const student = classObj?.students.find(s => s.studentId === state.individualStudentId);
   const score = assess?.scores?.[student?.studentId ?? ''];
 
   let body;
   if (!classObj || !assess || !student) {
-    body = el('div', { class: 'notice', text: 'Select a class, assessment, and student ID to show a score.' });
+    body = el('div', { class: 'notice', text: '請選擇班級、評量與學生學號以顯示分數。' });
   } else {
     const scoreSection = state.individualRevealed
       ? el('div', { class: 'stack' }, [
-          el('div', { class: 'title', text: `Student ID ${student.studentId}` }),
-          el('div', { class: 'muted', text: `Secret ID: ${student.secretId || '—'}` }),
+          el('div', { class: 'title', text: `學號 ${student.studentId}` }),
+          el('div', { class: 'muted', text: `暗號：${student.secretId || '—'}` }),
           el('div', { class: 'big-secret', text: score === null || score === undefined ? '—' : score }),
-          el('button', { class: 'secondary', onclick: () => { state.individualRevealed = false; render(); } }, 'Hide score')
+          el('button', { class: 'secondary', onclick: () => { state.individualRevealed = false; render(); } }, '隱藏分數')
         ])
       : el('div', { class: 'stack' }, [
-          el('p', { text: `Verify the student's identity before revealing the score for ID ${student.studentId}.` }),
-          el('button', { onclick: () => { state.individualRevealed = true; render(); } }, 'Reveal score')
+          el('p', { text: `在顯示學號 ${student.studentId} 的分數前，請先確認學生身分。` }),
+          el('button', { onclick: () => { state.individualRevealed = true; render(); } }, '顯示分數')
         ]);
 
     body = el('div', { class: 'card stack' }, [
-      el('div', { class: 'title', text: 'Selected student score' }),
+      el('div', { class: 'title', text: '選定學生的分數' }),
       scoreSection
     ]);
   }
 
   return el('main', {}, [
     el('div', { class: 'stack' }, [
-      el('div', { class: 'notice' }, 'Before revealing a score, confirm the student is who they claim to be to prevent impersonation.'),
+      el('div', { class: 'notice' }, '顯示分數前，請再次確認學生身分以避免冒名頂替。'),
       el('div', { class: 'card stack' }, [
-        el('div', { class: 'title', text: 'Select student' }),
+        el('div', { class: 'title', text: '選擇學生' }),
         el('div', { class: 'h-stack' }, [
-          el('div', { style: 'min-width: 200px; flex:1;' }, [el('label', { text: 'Class' }), classSelect]),
-          el('div', { style: 'min-width: 200px; flex:1;' }, [el('label', { text: 'Assessment' }), assessSelect]),
-          el('div', { style: 'min-width: 180px;' }, [el('label', { text: 'Student ID' }), studentSelect])
+          el('div', { style: 'min-width: 200px; flex:1;' }, [el('label', { text: '班級' }), classSelect]),
+          el('div', { style: 'min-width: 200px; flex:1;' }, [el('label', { text: '評量' }), assessSelect]),
+          el('div', { style: 'min-width: 180px;' }, [el('label', { text: '學生學號' }), studentSelect])
         ])
       ]),
       body
@@ -985,44 +985,44 @@ function classOptions() {
 }
 
 function assessmentOptions(classObj) {
-  if (!classObj) return [el('option', { value: '', text: 'No assessments' })];
+  if (!classObj) return [el('option', { value: '', text: '尚無評量' })];
   const opts = classObj.assessments.map(a => el('option', { value: a.assessmentId, text: a.title, selected: state.selectedAssessmentId === a.assessmentId }));
-  if (!opts.length) opts.push(el('option', { value: '', text: 'No assessments' }));
+  if (!opts.length) opts.push(el('option', { value: '', text: '尚無評量' }));
   return opts;
 }
 
 function renderCreateClassForm() {
-  const nameInput = el('input', { placeholder: 'e.g. 8A' });
-  const sizeInput = el('input', { type: 'number', min: '1', placeholder: 'Class size' });
+  const nameInput = el('input', { placeholder: '例如：八年甲班' });
+  const sizeInput = el('input', { type: 'number', min: '1', placeholder: '班級人數' });
   return el('div', { class: 'card stack' }, [
-    el('div', { class: 'title', text: 'Create New Class' }),
+    el('div', { class: 'title', text: '建立新班級' }),
     el('div', { class: 'h-stack' }, [
-      el('div', { style: 'flex:1;' }, [el('label', { text: 'Class Name' }), nameInput]),
-      el('div', { style: 'width: 180px;' }, [el('label', { text: 'Class Size' }), sizeInput])
+      el('div', { style: 'flex:1;' }, [el('label', { text: '班級名稱' }), nameInput]),
+      el('div', { style: 'width: 180px;' }, [el('label', { text: '班級人數' }), sizeInput])
     ]),
     el('button', {
       onclick: () => {
         const name = nameInput.value.trim();
         const size = Number(sizeInput.value);
         if (!name || !size || size < 1) {
-          setStatus('Enter a class name and positive size.', true);
+          setStatus('請輸入班級名稱與正整數人數。', true);
           return;
         }
         createClass({ name, size });
         nameInput.value = '';
         sizeInput.value = '';
       }
-    }, 'Create Class')
+    }, '建立班級')
   ]);
 }
 
 function renderRosterSection(classObj) {
-  if (!classObj) return el('div', { class: 'card' }, 'Select a class to manage roster.');
+  if (!classObj) return el('div', { class: 'card' }, '請選擇班級以管理名冊。');
   const duplicates = validateSecretIds(classObj);
   const rows = classObj.students.map(s => {
     const input = el('input', {
       value: s.secretId,
-      placeholder: 'Secret ID',
+      placeholder: '暗號',
       oninput: e => handleSecretIdChange(classObj.classId, s.studentId, e.target.value)
     });
     const td = el('td', {}, input);
@@ -1030,18 +1030,18 @@ function renderRosterSection(classObj) {
     return el('tr', {}, [
       el('td', {}, s.studentId),
       td,
-      el('td', {}, el('button', { class: 'danger secondary', onclick: () => deleteStudent(classObj.classId, s.studentId) }, 'Delete'))
+      el('td', {}, el('button', { class: 'danger secondary', onclick: () => deleteStudent(classObj.classId, s.studentId) }, '刪除'))
     ]);
   });
 
   return el('div', { class: 'card stack' }, [
     el('div', { class: 'h-stack', style: 'justify-content: space-between;' }, [
-      el('div', { class: 'title', text: 'Roster: Student IDs and Secret IDs' }),
-      el('button', { onclick: () => applySecretIdChanges(classObj.classId) }, 'Save Secret IDs')
+      el('div', { class: 'title', text: '名冊：學號與暗號' }),
+      el('button', { onclick: () => applySecretIdChanges(classObj.classId) }, '儲存暗號')
     ]),
-    duplicates.size ? el('div', { class: 'status error', text: 'Duplicate secret IDs detected. Each secret ID must be unique.' }) : null,
+    duplicates.size ? el('div', { class: 'status error', text: '偵測到重複的暗號，每個暗號必須唯一。' }) : null,
     el('table', { class: 'table' }, [
-      el('thead', {}, el('tr', {}, [el('th', {}, 'Student ID'), el('th', {}, 'Secret ID'), el('th', {}, 'Actions')])) ,
+      el('thead', {}, el('tr', {}, [el('th', {}, '學生學號'), el('th', {}, '暗號'), el('th', {}, '操作')])) ,
       el('tbody', {}, rows)
     ])
   ]);
@@ -1051,40 +1051,40 @@ function renderImportSection(classObj) {
   if (!classObj) return null;
   const fileInput = el('input', { type: 'file', accept: '.csv' });
   const csvModeSelect = el('select', {}, [
-    el('option', { value: 'row-order', text: 'Match by row order' }),
-    el('option', { value: 'student-id', text: 'Match by studentId column' })
+    el('option', { value: 'row-order', text: '依學生順序對應' }),
+    el('option', { value: 'student-id', text: '依學號欄位對應' })
   ]);
   const pasteModeSelect = el('select', {}, [
-    el('option', { value: 'row-order', text: 'Match by row order' }),
-    el('option', { value: 'student-id', text: 'Match by studentId column' })
+    el('option', { value: 'row-order', text: '依學生順序對應' }),
+    el('option', { value: 'student-id', text: '依學號欄位對應' })
   ]);
   const secretIdColInput = el('input', { type: 'number', min: '1', value: '1' });
   const studentIdColInput = el('input', { type: 'number', min: '1', value: '1' });
-  const pasteArea = el('textarea', { placeholder: 'Paste cells from Sheets/Excel here...' });
+  const pasteArea = el('textarea', { placeholder: '將試算表內容貼上於此...' });
 
   const handleRows = (rows, source, mode) => {
     if (!rows.length) return;
     const secretIdx = Number(secretIdColInput.value) - 1;
     const studentIdx = Number(studentIdColInput.value) - 1;
     applySecretIdImport(classObj.classId, rows, mode, { secretIdCol: secretIdx, studentIdCol: studentIdx });
-    setStatus(`${source} import applied.`);
+    setStatus(`${source} 匯入已套用。`);
   };
 
   return el('div', { class: 'card stack' }, [
-    el('div', { class: 'title', text: 'Import Secret IDs' }),
-    el('div', { class: 'small muted' }, 'Import will overwrite existing secret IDs for matching students. Duplicates are flagged before saving.'),
+    el('div', { class: 'title', text: '匯入暗號' }),
+    el('div', { class: 'small muted' }, '匯入會覆寫符合學生的既有暗號，偵測到重複會先提示。'),
     el('div', { class: 'stack' }, [
-      el('label', { text: 'CSV upload (Sheets/Excel export)' }),
+      el('label', { text: '上傳 CSV（Google Sheets/Excel 匯出）' }),
       el('input', { type: 'file', accept: '.csv', onchange: e => { fileInput.files = e.target.files; } }),
       el('div', { class: 'h-stack' }, [
-        el('div', { style: 'flex:1;' }, [el('label', { text: 'Mode' }), csvModeSelect]),
-        el('div', { style: 'width: 120px;' }, [el('label', { text: 'Secret ID column # (1-based)' }), secretIdColInput]),
-        el('div', { style: 'width: 160px;' }, [el('label', { text: 'Student ID column # (for student-id mode)' }), studentIdColInput])
+        el('div', { style: 'flex:1;' }, [el('label', { text: '對應方式' }), csvModeSelect]),
+        el('div', { style: 'width: 120px;' }, [el('label', { text: '暗號欄位序號（1 起算）' }), secretIdColInput]),
+        el('div', { style: 'width: 160px;' }, [el('label', { text: '學號欄位序號（學號對應模式）' }), studentIdColInput])
       ]),
       el('button', {
         onclick: () => {
           const file = fileInput.files?.[0];
-          if (!file) { setStatus('Choose a CSV file first.', true); return; }
+          if (!file) { setStatus('請先選擇 CSV 檔案。', true); return; }
           const reader = new FileReader();
           reader.onload = () => {
             const rows = parseCsv(reader.result);
@@ -1092,13 +1092,13 @@ function renderImportSection(classObj) {
           };
           reader.readAsText(file);
         }
-      }, 'Upload CSV')
+      }, '上傳 CSV')
     ]),
     el('div', { class: 'stack' }, [
-      el('label', { text: 'Copy–paste from spreadsheet' }),
+      el('label', { text: '從試算表複製貼上' }),
       pasteArea,
       el('div', { class: 'h-stack' }, [
-        el('div', { style: 'flex:1;' }, [el('label', { text: 'Mode' }), pasteModeSelect])
+        el('div', { style: 'flex:1;' }, [el('label', { text: '對應方式' }), pasteModeSelect])
       ]),
       el('button', {
         onclick: () => {
@@ -1106,70 +1106,70 @@ function renderImportSection(classObj) {
           handleRows(rows, 'Paste', pasteModeSelect.value);
           pasteArea.value = '';
         }
-      }, 'Apply Pasted IDs')
+      }, '套用貼上資料')
     ])
   ]);
 }
 
 function renderAssessmentsSection(classObj) {
-  if (!classObj) return el('div', { class: 'card' }, 'Select a class to manage assessments.');
-  const titleInput = el('input', { placeholder: 'Assessment title' });
+  if (!classObj) return el('div', { class: 'card' }, '請先選擇班級以管理評量。');
+  const titleInput = el('input', { placeholder: '評量標題' });
   const dateInput = el('input', { type: 'date' });
-  const maxInput = el('input', { type: 'number', min: '0', placeholder: 'Max score' });
+  const maxInput = el('input', { type: 'number', min: '0', placeholder: '滿分' });
 
   const assessmentList = classObj.assessments.map(a => el('div', { class: 'h-stack', style: 'justify-content: space-between;' }, [
-    el('div', {}, [el('strong', {}, a.title), el('div', { class: 'small muted', text: `${a.date || 'No date'} • Max ${a.maxScore}` })]),
+    el('div', {}, [el('strong', {}, a.title), el('div', { class: 'small muted', text: `${a.date || '未填日期'} • 滿分 ${a.maxScore}` })]),
     el('div', { class: 'h-stack' }, [
-      el('button', { class: state.selectedAssessmentId === a.assessmentId ? '' : 'secondary', onclick: () => { state.selectedAssessmentId = a.assessmentId; render(); } }, 'Open'),
-      el('button', { class: 'danger secondary', onclick: () => deleteAssessment(classObj.classId, a.assessmentId) }, 'Delete')
+      el('button', { class: state.selectedAssessmentId === a.assessmentId ? '' : 'secondary', onclick: () => { state.selectedAssessmentId = a.assessmentId; render(); } }, '開啟'),
+      el('button', { class: 'danger secondary', onclick: () => deleteAssessment(classObj.classId, a.assessmentId) }, '刪除')
     ])
   ]));
 
   const selected = classObj.assessments.find(a => a.assessmentId === state.selectedAssessmentId);
   let editCard = null;
   if (selected) {
-    const editTitle = el('input', { value: selected.title, placeholder: 'Assessment title' });
+    const editTitle = el('input', { value: selected.title, placeholder: '評量標題' });
     const editDate = el('input', { type: 'date', value: selected.date || '' });
     const editMax = el('input', { type: 'number', min: '0', value: selected.maxScore ?? '' });
     editCard = el('div', { class: 'card stack' }, [
       el('div', { class: 'h-stack', style: 'justify-content: space-between;' }, [
-        el('div', { class: 'title', text: `Edit ${selected.title}` }),
+        el('div', { class: 'title', text: `編輯 ${selected.title}` }),
         el('div', { class: 'h-stack' }, [
-          el('button', { class: 'secondary', onclick: () => updateAssessment(classObj.classId, selected.assessmentId, { title: editTitle.value, date: editDate.value, maxScore: Number(editMax.value) }) }, 'Save changes'),
-          el('button', { class: 'danger secondary', onclick: () => deleteAssessment(classObj.classId, selected.assessmentId) }, 'Delete assessment')
+          el('button', { class: 'secondary', onclick: () => updateAssessment(classObj.classId, selected.assessmentId, { title: editTitle.value, date: editDate.value, maxScore: Number(editMax.value) }) }, '儲存變更'),
+          el('button', { class: 'danger secondary', onclick: () => deleteAssessment(classObj.classId, selected.assessmentId) }, '刪除此評量')
         ])
       ]),
       el('div', { class: 'h-stack' }, [
-        el('div', { style: 'flex:1;' }, [el('label', { text: 'Title' }), editTitle]),
-        el('div', { style: 'width:160px;' }, [el('label', { text: 'Date' }), editDate]),
-        el('div', { style: 'width:140px;' }, [el('label', { text: 'Max score' }), editMax])
+        el('div', { style: 'flex:1;' }, [el('label', { text: '標題' }), editTitle]),
+        el('div', { style: 'width:160px;' }, [el('label', { text: '日期' }), editDate]),
+        el('div', { style: 'width:140px;' }, [el('label', { text: '滿分' }), editMax])
       ])
     ]);
   }
 
   return el('div', { class: 'stack' }, [
     el('div', { class: 'card stack' }, [
-      el('div', { class: 'title', text: 'Assessments' }),
-      assessmentList.length ? el('div', { class: 'stack' }, assessmentList) : el('div', { class: 'muted' }, 'No assessments yet.'),
+      el('div', { class: 'title', text: '評量清單' }),
+      assessmentList.length ? el('div', { class: 'stack' }, assessmentList) : el('div', { class: 'muted' }, '尚無評量。'),
       el('div', { class: 'stack', style: 'border-top:1px solid var(--border); padding-top:12px;' }, [
-        el('div', { class: 'title', text: 'Create new assessment' }),
+        el('div', { class: 'title', text: '新增評量' }),
         el('div', { class: 'h-stack' }, [
-          el('div', { style: 'flex:1;' }, [el('label', { text: 'Title' }), titleInput]),
-          el('div', { style: 'width:160px;' }, [el('label', { text: 'Date' }), dateInput]),
-          el('div', { style: 'width:140px;' }, [el('label', { text: 'Max score' }), maxInput])
+          el('div', { style: 'flex:1;' }, [el('label', { text: '標題' }), titleInput]),
+          el('div', { style: 'width:160px;' }, [el('label', { text: '日期' }), dateInput]),
+          el('div', { style: 'width:140px;' }, [el('label', { text: '滿分' }), maxInput])
         ]),
         el('button', {
           onclick: () => {
             const title = titleInput.value.trim();
             const date = dateInput.value;
             const max = Number(maxInput.value);
-            if (!title || Number.isNaN(max)) { setStatus('Enter title and max score.', true); return; }
+            if (!title || Number.isNaN(max)) { setStatus('請輸入標題與最大分數。', true); return; }
             createAssessment(classObj.classId, { title, date, maxScore: max });
             titleInput.value = '';
             dateInput.value = '';
             maxInput.value = '';
           }
-        }, 'Create assessment')
+        }, '建立評量')
       ])
     ]),
     editCard
@@ -1177,24 +1177,24 @@ function renderAssessmentsSection(classObj) {
 }
 
 function renderClassListCard() {
-  if (!state.data.classes.length) return el('div', { class: 'card' }, 'No classes yet. Create one to begin.');
+  if (!state.data.classes.length) return el('div', { class: 'card' }, '尚無班級，請先建立。');
   const rows = state.data.classes.map(c => {
     const nameInput = el('input', { value: c.className });
     return el('tr', {}, [
       el('td', {}, nameInput),
-      el('td', {}, `${c.students.length} students`),
+      el('td', {}, `${c.students.length} 名學生`),
       el('td', {}, el('div', { class: 'h-stack' }, [
-        el('button', { class: state.selectedClassId === c.classId ? '' : 'secondary', onclick: () => { state.selectedClassId = c.classId; state.selectedAssessmentId = null; render(); } }, 'Open'),
-        el('button', { class: 'secondary', onclick: () => updateClassName(c.classId, nameInput.value) }, 'Save name'),
-        el('button', { class: 'danger secondary', onclick: () => deleteClass(c.classId) }, 'Delete class')
+        el('button', { class: state.selectedClassId === c.classId ? '' : 'secondary', onclick: () => { state.selectedClassId = c.classId; state.selectedAssessmentId = null; render(); } }, '開啟'),
+        el('button', { class: 'secondary', onclick: () => updateClassName(c.classId, nameInput.value) }, '儲存名稱'),
+        el('button', { class: 'danger secondary', onclick: () => deleteClass(c.classId) }, '刪除班級')
       ]))
     ]);
   });
 
   return el('div', { class: 'card stack' }, [
-    el('div', { class: 'title', text: 'Existing classes' }),
+    el('div', { class: 'title', text: '已建立的班級' }),
     el('table', { class: 'table' }, [
-      el('thead', {}, el('tr', {}, [el('th', {}, 'Class name'), el('th', {}, 'Students'), el('th', {}, 'Actions')])),
+      el('thead', {}, el('tr', {}, [el('th', {}, '班級名稱'), el('th', {}, '學生數'), el('th', {}, '操作')])),
       el('tbody', {}, rows)
     ])
   ]);
@@ -1204,11 +1204,11 @@ function renderClassSelectorCard() {
   return el('div', { class: 'card stack' }, [
     el('div', { class: 'h-stack' }, [
       el('div', { style: 'flex:1;' }, [
-        el('label', { text: 'Select class' }),
+        el('label', { text: '選擇班級' }),
         el('select', {
           value: state.selectedClassId || '',
           onchange: e => { handleClassSelection(e.target.value); render(); }
-        }, [el('option', { value: '', text: 'Choose a class' }), ...classOptions()])
+        }, [el('option', { value: '', text: '請選擇班級' }), ...classOptions()])
       ])
     ])
   ]);
@@ -1243,33 +1243,33 @@ function renderScoresSection(classObj) {
     ]);
   });
 
-  const pasteArea = el('textarea', { placeholder: 'Paste scores (single column for row order; or StudentID,Score for student-id mode)' });
+  const pasteArea = el('textarea', { placeholder: '貼上分數（單欄依座次；或學號,分數 以學號模式對應）' });
   const modeSelect = el('select', {}, [
-    el('option', { value: 'row-order', text: 'Match by row order' }),
-    el('option', { value: 'student-id', text: 'Match by student ID' })
+    el('option', { value: 'row-order', text: '依學生順序對應' }),
+    el('option', { value: 'student-id', text: '依學號對應' })
   ]);
 
   return el('div', { class: 'card stack' }, [
     el('div', { class: 'h-stack', style: 'justify-content: space-between;' }, [
-      el('div', { class: 'title', text: `Scores for ${assess.title}` }),
-      el('button', { onclick: applyScoreChanges }, 'Save scores')
+      el('div', { class: 'title', text: `${assess.title} 的分數` }),
+      el('button', { onclick: applyScoreChanges }, '儲存分數')
     ]),
     el('table', { class: 'table' }, [
-      el('thead', {}, el('tr', {}, [el('th', {}, 'Student ID'), el('th', {}, 'Secret ID'), el('th', {}, 'Score')])),
+      el('thead', {}, el('tr', {}, [el('th', {}, '學生學號'), el('th', {}, '暗號'), el('th', {}, '分數')])),
       el('tbody', {}, rows)
     ]),
     el('div', { class: 'stack' }, [
-      el('label', { text: 'Paste scores' }),
+      el('label', { text: '貼上分數' }),
       modeSelect,
       pasteArea,
       el('button', {
         onclick: () => {
           const rows = parseCsv(pasteArea.value);
-          if (!rows.length) { setStatus('Paste some rows first.', true); return; }
+          if (!rows.length) { setStatus('請先貼上資料列。', true); return; }
           applyScoreImport(classObj.classId, assess.assessmentId, rows, modeSelect.value);
           pasteArea.value = '';
         }
-      }, 'Apply pasted scores')
+      }, '套用貼上資料')
     ])
   ]);
 }
@@ -1279,9 +1279,9 @@ function renderTeacherPanel() {
   const classObj = state.data.classes.find(c => c.classId === state.selectedClassId);
 
   const tabButtons = el('div', { class: 'tabs' }, [
-    el('button', { class: state.teacherTab === 'classes' ? 'tab active' : 'tab secondary', onclick: () => { state.teacherTab = 'classes'; render(); } }, 'Class management'),
-    el('button', { class: state.teacherTab === 'students' ? 'tab active' : 'tab secondary', onclick: () => { state.teacherTab = 'students'; render(); } }, 'Student IDs'),
-    el('button', { class: state.teacherTab === 'assessments' ? 'tab active' : 'tab secondary', onclick: () => { state.teacherTab = 'assessments'; render(); } }, 'Assessments')
+    el('button', { class: state.teacherTab === 'classes' ? 'tab active' : 'tab secondary', onclick: () => { state.teacherTab = 'classes'; render(); } }, '班級管理'),
+    el('button', { class: state.teacherTab === 'students' ? 'tab active' : 'tab secondary', onclick: () => { state.teacherTab = 'students'; render(); } }, '學生暗號'),
+    el('button', { class: state.teacherTab === 'assessments' ? 'tab active' : 'tab secondary', onclick: () => { state.teacherTab = 'assessments'; render(); } }, '評量管理')
   ]);
 
   let content;
