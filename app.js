@@ -3,6 +3,69 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.appdata https://www.google
 const DRIVE_FILE_NAME = 'maskmark-data.json';
 const LOG_PREFIX = '[MaskMark]';
 
+const secretIdNames = [
+  '晴空森林',
+  '晴空河灣',
+  '晴空山谷',
+  '晴空海岸',
+  '晴空花園',
+  '晴空草原',
+  '晴空湖畔',
+  '晴空小徑',
+  '晴空峽谷',
+  '晴空樹影',
+  '和風森林',
+  '和風河灣',
+  '和風山谷',
+  '和風海岸',
+  '和風花園',
+  '和風草原',
+  '和風湖畔',
+  '和風小徑',
+  '和風峽谷',
+  '和風樹影',
+  '輕霧森林',
+  '輕霧河灣',
+  '輕霧山谷',
+  '輕霧海岸',
+  '輕霧花園',
+  '輕霧草原',
+  '輕霧湖畔',
+  '輕霧小徑',
+  '輕霧峽谷',
+  '輕霧樹影',
+  '細雨森林',
+  '細雨河灣',
+  '細雨山谷',
+  '細雨海岸',
+  '細雨花園',
+  '細雨草原',
+  '細雨湖畔',
+  '細雨小徑',
+  '細雨峽谷',
+  '細雨樹影',
+  '晨露森林',
+  '晨露河灣',
+  '晨露山谷',
+  '晨露海岸',
+  '晨露花園',
+  '晨露草原',
+  '晨露湖畔',
+  '晨露小徑',
+  '晨露峽谷',
+  '晨露樹影',
+  '暮色森林',
+  '暮色河灣',
+  '暮色山谷',
+  '暮色海岸',
+  '暮色花園',
+  '暮色草原',
+  '暮色湖畔',
+  '暮色小徑',
+  '暮色峽谷',
+  '暮色樹影'
+];
+
 const state = {
   gapiReady: false,
   gisReady: false,
@@ -17,7 +80,11 @@ const state = {
   error: '',
   staySignedIn: localStorage.getItem('maskmark_stay_signed_in') === '1',
   autoSignInAttempted: false,
-  teacherTab: 'classes'
+  teacherTab: 'classes',
+  showCodeStage: 'instruction',
+  showCodeIndex: 0,
+  showCodeRevealed: false,
+  showCodeAwaitingNav: false
 };
 
 let tokenClient = null;
@@ -126,8 +193,27 @@ function signOut() {
   state.autoSignInAttempted = false;
   state.staySignedIn = false;
   state.teacherTab = 'classes';
+  state.showCodeStage = 'instruction';
+  state.showCodeIndex = 0;
+  state.showCodeRevealed = false;
+  state.showCodeAwaitingNav = false;
   localStorage.setItem('maskmark_stay_signed_in', '0');
   render();
+}
+
+function generateSecretIds(size) {
+  const pool = [...secretIdNames];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const results = [];
+  for (let i = 0; i < size; i++) {
+    const base = pool[i % pool.length];
+    const suffix = Math.floor(i / pool.length);
+    results.push(suffix === 0 ? base : `${base}${suffix}`);
+  }
+  return results;
 }
 
 function ensureDefaultSelections() {
@@ -142,6 +228,19 @@ function ensureDefaultSelections() {
       state.selectedAssessmentId = firstAssessment.assessmentId;
     }
   }
+}
+
+function handleClassSelection(newClassId) {
+  state.selectedClassId = newClassId;
+  state.selectedAssessmentId = null;
+  resetShowCodeProgress();
+}
+
+function resetShowCodeProgress() {
+  state.showCodeStage = 'instruction';
+  state.showCodeIndex = 0;
+  state.showCodeRevealed = false;
+  state.showCodeAwaitingNav = false;
 }
 
 async function loadDataFromDrive() {
@@ -256,9 +355,10 @@ function maybeAutoSignIn() {
 
 function createClass({ name, size }) {
   const digits = String(size).length;
+  const secretIds = generateSecretIds(size);
   const students = Array.from({ length: size }).map((_, idx) => {
     const num = String(idx + 1).padStart(digits, '0');
-    return { studentId: num, secretId: '' };
+    return { studentId: num, secretId: secretIds[idx] };
   });
   const newClass = {
     classId: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
@@ -351,6 +451,7 @@ function createAssessment(classId, { title, date, maxScore }) {
   };
   classObj.assessments.push(assessment);
   state.selectedAssessmentId = assessment.assessmentId;
+  resetShowCodeProgress();
   saveDataToDrive();
   render();
 }
@@ -478,6 +579,7 @@ function renderHeader() {
     el('div', { class: 'title', text: 'MaskMark – Anonymous Classroom Scores' }),
     el('div', { class: 'controls' }, [
       el('button', { class: state.view === 'projector' ? '' : 'secondary', onclick: () => { state.view = 'projector'; render(); } }, 'Projector Mode'),
+      el('button', { class: state.view === 'showcode' ? '' : 'secondary', onclick: () => { state.view = 'showcode'; resetShowCodeProgress(); render(); } }, 'Show Code Mode'),
       el('button', { class: state.view === 'teacher' ? '' : 'secondary', onclick: () => { state.view = 'teacher'; render(); } }, 'Teacher Panel'),
       el('span', { class: 'badge', text: state.userEmail }),
       el('button', { class: 'secondary', onclick: signOut }, 'Sign out')
@@ -508,8 +610,7 @@ function renderProjector() {
       el('select', {
         value: state.selectedClassId,
         onchange: e => {
-          state.selectedClassId = e.target.value;
-          state.selectedAssessmentId = null;
+          handleClassSelection(e.target.value);
           ensureDefaultSelections();
           render();
         }
@@ -550,6 +651,135 @@ function renderProjector() {
       table
     ])
   ]);
+}
+
+function currentShowCodeStudents(classObj) {
+  if (!classObj) return [];
+  return [...classObj.students].sort((a, b) => a.studentId.localeCompare(b.studentId));
+}
+
+function setShowCodeIndex(newIndex, total) {
+  if (total === 0) return;
+  const clamped = Math.max(0, Math.min(newIndex, total - 1));
+  state.showCodeIndex = clamped;
+  state.showCodeStage = 'credential';
+  state.showCodeRevealed = false;
+  state.showCodeAwaitingNav = false;
+}
+
+function handleShowCodeConfirm(total) {
+  const nextIndex = state.showCodeIndex + 1;
+  state.showCodeRevealed = false;
+  state.showCodeAwaitingNav = true;
+  if (nextIndex >= total) {
+    state.showCodeIndex = total - 1;
+    state.showCodeStage = 'instruction';
+  } else {
+    state.showCodeIndex = nextIndex;
+    state.showCodeStage = nextIndex % 5 === 0 ? 'instruction' : 'credential';
+  }
+  render();
+}
+
+function renderShowCode() {
+  if (!state.data.classes.length) {
+    return el('main', {}, [
+      el('div', { class: 'card stack' }, [
+        el('div', { class: 'title', text: 'Show Code Mode' }),
+        el('p', { text: 'No classes yet. Create a class in the Teacher Panel.' })
+      ])
+    ]);
+  }
+
+  ensureDefaultSelections();
+  const classObj = state.data.classes.find(c => c.classId === state.selectedClassId);
+  const students = currentShowCodeStudents(classObj);
+
+  if (!classObj || !students.length) {
+    return el('main', {}, [
+      el('div', { class: 'card stack' }, [
+        el('div', { class: 'title', text: 'Show Code Mode' }),
+        el('p', { text: 'Add students to this class to reveal codes.' })
+      ])
+    ]);
+  }
+
+  if (state.showCodeIndex >= students.length) {
+    state.showCodeIndex = Math.max(0, students.length - 1);
+  }
+
+  const classSelector = el('div', { class: 'h-stack' }, [
+    el('div', { style: 'min-width: 220px;' }, [
+      el('label', { text: 'Class' }),
+      el('select', {
+        value: state.selectedClassId,
+        onchange: e => { handleClassSelection(e.target.value); render(); }
+      }, classOptions())
+    ])
+  ]);
+
+  const groupStart = Math.floor(state.showCodeIndex / 5) * 5;
+  const groupEnd = Math.min(groupStart + 4, students.length - 1);
+  const instruction = el('div', { class: 'card stack showcode-card' }, [
+    el('div', { class: 'title', text: 'Show Code – Instruction' }),
+    el('p', {
+      html: `Ask the following student to line up then come to you one by one:<br/>Students with ID ${students[groupStart].studentId} to ${students[groupEnd].studentId}`
+    }),
+    el('p', { class: 'muted', text: 'Click Next when the first student of the group is in front of you.' }),
+    el('button', {
+      onclick: () => { state.showCodeStage = 'credential'; state.showCodeRevealed = false; state.showCodeAwaitingNav = false; render(); }
+    }, 'Next')
+  ]);
+
+  const currentStudent = students[state.showCodeIndex];
+  const navControls = el('div', { class: 'h-stack' }, [
+    el('button', {
+      class: 'secondary',
+      disabled: state.showCodeIndex === 0,
+      onclick: () => { setShowCodeIndex(state.showCodeIndex - 1, students.length); render(); }
+    }, 'Previous'),
+    el('div', { style: 'min-width: 180px;' }, [
+      el('select', {
+        value: currentStudent.studentId,
+        onchange: e => {
+          const idx = students.findIndex(s => s.studentId === e.target.value);
+          if (idx !== -1) { setShowCodeIndex(idx, students.length); render(); }
+        }
+      }, students.map(s => el('option', { value: s.studentId, text: s.studentId })))
+    ]),
+    el('button', {
+      class: 'secondary',
+      disabled: state.showCodeIndex >= students.length - 1,
+      onclick: () => { setShowCodeIndex(state.showCodeIndex + 1, students.length); render(); }
+    }, 'Next')
+  ]);
+
+  const credentialBody = state.showCodeRevealed
+    ? el('div', { class: 'stack reveal-card' }, [
+        el('div', { class: 'title', text: `Student ID: ${currentStudent.studentId}` }),
+        el('div', { class: 'big-secret', text: currentStudent.secretId || '—' }),
+        el('button', {
+          onclick: () => handleShowCodeConfirm(students.length)
+        }, 'Confirm and move on')
+      ])
+    : el('div', { class: 'stack' }, [
+        el('p', { text: `Click reveal when student is ready to see the credentials for student ID: ${currentStudent.studentId}` }),
+        el('button', { onclick: () => { state.showCodeRevealed = true; state.showCodeAwaitingNav = false; render(); } }, 'Reveal'),
+        state.showCodeAwaitingNav && el('div', { class: 'muted', text: 'Credential hidden. Use navigation to move to the next student.' })
+      ]);
+
+  const credentialNote = state.showCodeRevealed ? null : el('div', { class: 'muted small' }, 'Use navigation to move between students.');
+
+  const credentialCard = el('div', { class: 'card stack showcode-card' }, [
+    el('div', { class: 'title', text: 'Show Code – Credential' }),
+    navControls,
+    credentialBody,
+    credentialNote
+  ]);
+
+  const bodyContent = state.showCodeStage === 'instruction' ? instruction : credentialCard;
+
+  return el('main', {}, [classSelector, bodyContent]);
 }
 
 function classOptions() {
@@ -779,7 +1009,7 @@ function renderClassSelectorCard() {
         el('label', { text: 'Select class' }),
         el('select', {
           value: state.selectedClassId || '',
-          onchange: e => { state.selectedClassId = e.target.value; state.selectedAssessmentId = null; render(); }
+          onchange: e => { handleClassSelection(e.target.value); render(); }
         }, [el('option', { value: '', text: 'Choose a class' }), ...classOptions()])
       ])
     ])
@@ -882,7 +1112,8 @@ function render() {
   }
   const header = renderHeader();
   if (header) app.appendChild(header);
-  app.appendChild(state.view === 'projector' ? renderProjector() : renderTeacherPanel());
+  const view = state.view === 'projector' ? renderProjector() : state.view === 'showcode' ? renderShowCode() : renderTeacherPanel();
+  app.appendChild(view);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
