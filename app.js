@@ -611,32 +611,6 @@ function parseCsv(text) {
     .map(line => line.split(/,|\t/).map(cell => cell.trim()));
 }
 
-function applySecretIdImport(classId, rows, mode, options) {
-  const classObj = state.data.classes.find(c => c.classId === classId);
-  if (!classObj) return;
-  if (mode === 'row-order') {
-    classObj.students.forEach((s, idx) => {
-      if (rows[idx] && rows[idx][options.secretIdCol]) s.secretId = rows[idx][options.secretIdCol];
-    });
-  } else if (mode === 'student-id') {
-    const idCol = options.studentIdCol;
-    const secretCol = options.secretIdCol;
-    rows.forEach(r => {
-      const sid = r[idCol];
-      const secret = r[secretCol];
-      const student = classObj.students.find(s => s.studentId === sid);
-      if (student && secret) student.secretId = secret;
-    });
-  }
-  const dups = validateSecretIds(classObj);
-  if (dups.size) {
-    setStatus('匯入完成但偵測到重複暗號，請先處理再儲存。', true);
-  } else {
-    saveDataToDrive();
-  }
-  render();
-}
-
 function applyScoreImport(classId, assessmentId, rows, mode) {
   const classObj = state.data.classes.find(c => c.classId === classId);
   const assess = classObj?.assessments.find(a => a.assessmentId === assessmentId);
@@ -676,7 +650,7 @@ function renderLanding() {
         el('button', { disabled: !state.gapiReady || !state.gisReady, onclick: signIn }, '以 Google 登入'),
         (!state.gapiReady || !state.gisReady) && el('span', { class: 'muted small', text: '正在載入 Google 登入...' })
       ]),
-      el('label', { class: 'h-stack', style: 'gap:8px; align-items:center;' }, [staySignedCheckbox, el('span', { text: '此裝置保持登入' })]),
+      el('div', { class: 'h-stack stay-row', style: 'align-items:center;' }, [staySignedCheckbox, el('span', { text: '此裝置保持登入' })]),
       el('div', { class: 'muted small' }, `gapi 就緒：${state.gapiReady} • GIS 就緒：${state.gisReady}`),
       state.error && el('div', { class: 'status error', text: state.error })
     ])
@@ -1047,70 +1021,6 @@ function renderRosterSection(classObj) {
   ]);
 }
 
-function renderImportSection(classObj) {
-  if (!classObj) return null;
-  const fileInput = el('input', { type: 'file', accept: '.csv' });
-  const csvModeSelect = el('select', {}, [
-    el('option', { value: 'row-order', text: '依學生順序對應' }),
-    el('option', { value: 'student-id', text: '依學號欄位對應' })
-  ]);
-  const pasteModeSelect = el('select', {}, [
-    el('option', { value: 'row-order', text: '依學生順序對應' }),
-    el('option', { value: 'student-id', text: '依學號欄位對應' })
-  ]);
-  const secretIdColInput = el('input', { type: 'number', min: '1', value: '1' });
-  const studentIdColInput = el('input', { type: 'number', min: '1', value: '1' });
-  const pasteArea = el('textarea', { placeholder: '將試算表內容貼上於此...' });
-
-  const handleRows = (rows, source, mode) => {
-    if (!rows.length) return;
-    const secretIdx = Number(secretIdColInput.value) - 1;
-    const studentIdx = Number(studentIdColInput.value) - 1;
-    applySecretIdImport(classObj.classId, rows, mode, { secretIdCol: secretIdx, studentIdCol: studentIdx });
-    setStatus(`${source} 匯入已套用。`);
-  };
-
-  return el('div', { class: 'card stack' }, [
-    el('div', { class: 'title', text: '匯入暗號' }),
-    el('div', { class: 'small muted' }, '匯入會覆寫符合學生的既有暗號，偵測到重複會先提示。'),
-    el('div', { class: 'stack' }, [
-      el('label', { text: '上傳 CSV（Google Sheets/Excel 匯出）' }),
-      el('input', { type: 'file', accept: '.csv', onchange: e => { fileInput.files = e.target.files; } }),
-      el('div', { class: 'h-stack' }, [
-        el('div', { style: 'flex:1;' }, [el('label', { text: '對應方式' }), csvModeSelect]),
-        el('div', { style: 'width: 120px;' }, [el('label', { text: '暗號欄位序號（1 起算）' }), secretIdColInput]),
-        el('div', { style: 'width: 160px;' }, [el('label', { text: '學號欄位序號（學號對應模式）' }), studentIdColInput])
-      ]),
-      el('button', {
-        onclick: () => {
-          const file = fileInput.files?.[0];
-          if (!file) { setStatus('請先選擇 CSV 檔案。', true); return; }
-          const reader = new FileReader();
-          reader.onload = () => {
-            const rows = parseCsv(reader.result);
-            handleRows(rows, 'CSV', csvModeSelect.value);
-          };
-          reader.readAsText(file);
-        }
-      }, '上傳 CSV')
-    ]),
-    el('div', { class: 'stack' }, [
-      el('label', { text: '從試算表複製貼上' }),
-      pasteArea,
-      el('div', { class: 'h-stack' }, [
-        el('div', { style: 'flex:1;' }, [el('label', { text: '對應方式' }), pasteModeSelect])
-      ]),
-      el('button', {
-        onclick: () => {
-          const rows = parseCsv(pasteArea.value);
-          handleRows(rows, 'Paste', pasteModeSelect.value);
-          pasteArea.value = '';
-        }
-      }, '套用貼上資料')
-    ])
-  ]);
-}
-
 function renderAssessmentsSection(classObj) {
   if (!classObj) return el('div', { class: 'card' }, '請先選擇班級以管理評量。');
   const titleInput = el('input', { placeholder: '評量標題' });
@@ -1219,7 +1129,7 @@ function renderClassTab() {
 }
 
 function renderStudentTab(classObj) {
-  return el('div', { class: 'stack' }, [renderClassSelectorCard(), renderRosterSection(classObj), renderImportSection(classObj)]);
+  return el('div', { class: 'stack' }, [renderClassSelectorCard(), renderRosterSection(classObj)]);
 }
 
 function renderAssessmentTab(classObj) {

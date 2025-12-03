@@ -132,6 +132,11 @@ input, select, textarea {
   box-sizing: border-box;
 }
 
+.stay-row input[type="checkbox"] {
+  width: auto;
+  height: 18px;
+}
+
 textarea { min-height: 120px; }
 
 .table {
