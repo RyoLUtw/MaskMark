@@ -206,6 +206,39 @@ textarea { min-height: 120px; }
 
 .projector .card { background: transparent; box-shadow: none; border: 1px solid #1e293b; }
 
+.projector-controls {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.projector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.projector-cell {
+  background: #0b1224;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+}
+
+.projector-secret {
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.projector-score {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
 .notice {
   padding: 16px;
   border-radius: 12px;

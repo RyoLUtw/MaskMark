@@ -76,6 +76,8 @@ const state = {
   dataFileId: null,
   selectedClassId: null,
   selectedAssessmentId: null,
+  individualStudentId: null,
+  individualRevealed: false,
   status: '',
   error: '',
   staySignedIn: localStorage.getItem('maskmark_stay_signed_in') === '1',
@@ -84,10 +86,15 @@ const state = {
   showCodeStage: 'instruction',
   showCodeIndex: 0,
   showCodeRevealed: false,
-  showCodeAwaitingNav: false
+  showCodeAwaitingNav: false,
+  projectorRunning: false,
+  projectorPhase: 'idle',
+  projectorIndex: 0,
+  projectorTimer: 0
 };
 
 let tokenClient = null;
+let projectorInterval = null;
 
 const el = (tag, attrs = {}, children = []) => {
   const element = document.createElement(tag);
@@ -190,6 +197,8 @@ function signOut() {
   state.dataFileId = null;
   state.selectedClassId = null;
   state.selectedAssessmentId = null;
+  state.individualStudentId = null;
+  state.individualRevealed = false;
   state.autoSignInAttempted = false;
   state.staySignedIn = false;
   state.teacherTab = 'classes';
@@ -197,6 +206,7 @@ function signOut() {
   state.showCodeIndex = 0;
   state.showCodeRevealed = false;
   state.showCodeAwaitingNav = false;
+  resetProjectorCycle();
   localStorage.setItem('maskmark_stay_signed_in', '0');
   render();
 }
@@ -227,13 +237,92 @@ function ensureDefaultSelections() {
     if (!state.selectedAssessmentId && firstAssessment) {
       state.selectedAssessmentId = firstAssessment.assessmentId;
     }
+    if (!state.individualStudentId || !selectedClass.students.find(s => s.studentId === state.individualStudentId)) {
+      state.individualStudentId = selectedClass.students[0]?.studentId || null;
+      state.individualRevealed = false;
+    }
   }
 }
 
 function handleClassSelection(newClassId) {
   state.selectedClassId = newClassId;
   state.selectedAssessmentId = null;
+  state.individualStudentId = null;
+  state.individualRevealed = false;
   resetShowCodeProgress();
+  resetProjectorCycle();
+}
+
+function stopProjectorTimer() {
+  if (projectorInterval) {
+    clearInterval(projectorInterval);
+    projectorInterval = null;
+  }
+}
+
+function resetProjectorCycle() {
+  stopProjectorTimer();
+  state.projectorRunning = false;
+  state.projectorPhase = 'idle';
+  state.projectorIndex = 0;
+  state.projectorTimer = 0;
+}
+
+function projectorStudents(classObj) {
+  if (!classObj) return [];
+  return [...classObj.students].sort((a, b) => (a.secretId || '').localeCompare(b.secretId || ''));
+}
+
+function startProjectorCycle() {
+  const classObj = state.data.classes.find(c => c.classId === state.selectedClassId);
+  const assess = classObj?.assessments.find(a => a.assessmentId === state.selectedAssessmentId);
+  const students = projectorStudents(classObj);
+  if (!classObj || !assess || !students.length) return;
+  resetProjectorCycle();
+  state.projectorRunning = true;
+  state.projectorPhase = 'ids';
+  state.projectorIndex = 0;
+  state.projectorTimer = 5;
+  render();
+  projectorInterval = setInterval(() => tickProjectorCycle(), 1000);
+}
+
+function tickProjectorCycle() {
+  const classObj = state.data.classes.find(c => c.classId === state.selectedClassId);
+  const assess = classObj?.assessments.find(a => a.assessmentId === state.selectedAssessmentId);
+  const students = projectorStudents(classObj);
+  if (!classObj || !assess || !students.length) {
+    resetProjectorCycle();
+    render();
+    return;
+  }
+  if (!state.projectorRunning) {
+    stopProjectorTimer();
+    return;
+  }
+  if (state.projectorTimer > 0) {
+    state.projectorTimer -= 1;
+    render();
+    if (state.projectorTimer > 0) return;
+  }
+  if (state.projectorPhase === 'ids') {
+    state.projectorPhase = 'scores';
+    state.projectorTimer = 1;
+  } else if (state.projectorPhase === 'scores') {
+    const nextIndex = state.projectorIndex + 5;
+    if (nextIndex >= students.length) {
+      stopProjectorTimer();
+      state.projectorRunning = false;
+      state.projectorPhase = 'done';
+      state.projectorTimer = 0;
+      state.projectorIndex = 0;
+    } else {
+      state.projectorIndex = nextIndex;
+      state.projectorPhase = 'ids';
+      state.projectorTimer = 5;
+    }
+  }
+  render();
 }
 
 function resetShowCodeProgress() {
@@ -579,8 +668,9 @@ function renderHeader() {
     el('div', { class: 'title', text: 'MaskMark – Anonymous Classroom Scores' }),
     el('div', { class: 'controls' }, [
       el('button', { class: state.view === 'projector' ? '' : 'secondary', onclick: () => { state.view = 'projector'; render(); } }, 'Projector Mode'),
-      el('button', { class: state.view === 'showcode' ? '' : 'secondary', onclick: () => { state.view = 'showcode'; resetShowCodeProgress(); render(); } }, 'Show Code Mode'),
-      el('button', { class: state.view === 'teacher' ? '' : 'secondary', onclick: () => { state.view = 'teacher'; render(); } }, 'Teacher Panel'),
+      el('button', { class: state.view === 'showcode' ? '' : 'secondary', onclick: () => { state.view = 'showcode'; resetProjectorCycle(); resetShowCodeProgress(); render(); } }, 'Show Code Mode'),
+      el('button', { class: state.view === 'individual' ? '' : 'secondary', onclick: () => { state.view = 'individual'; resetProjectorCycle(); state.individualRevealed = false; render(); } }, 'Individual Mode'),
+      el('button', { class: state.view === 'teacher' ? '' : 'secondary', onclick: () => { state.view = 'teacher'; resetProjectorCycle(); render(); } }, 'Teacher Panel'),
       el('span', { class: 'badge', text: state.userEmail }),
       el('button', { class: 'secondary', onclick: signOut }, 'Sign out')
     ])
@@ -604,6 +694,10 @@ function renderProjector() {
   ensureDefaultSelections();
   const classObj = state.data.classes.find(c => c.classId === state.selectedClassId);
   const assess = classObj?.assessments.find(a => a.assessmentId === state.selectedAssessmentId);
+  const sortedStudents = projectorStudents(classObj);
+  const totalGroups = Math.ceil(sortedStudents.length / 5);
+  const currentStart = Math.min(state.projectorIndex, Math.max(0, (totalGroups - 1) * 5));
+  const currentGroup = sortedStudents.slice(currentStart, currentStart + 5);
   const selectors = el('div', { class: 'h-stack' }, [
     el('div', { style: 'min-width: 200px;' }, [
       el('label', { text: 'Class' }),
@@ -612,6 +706,7 @@ function renderProjector() {
         onchange: e => {
           handleClassSelection(e.target.value);
           ensureDefaultSelections();
+          resetProjectorCycle();
           render();
         }
       }, classOptions())
@@ -620,7 +715,7 @@ function renderProjector() {
       el('label', { text: 'Assessment' }),
       el('select', {
         value: state.selectedAssessmentId || '',
-        onchange: e => { state.selectedAssessmentId = e.target.value; render(); }
+        onchange: e => { state.selectedAssessmentId = e.target.value; resetProjectorCycle(); render(); }
       }, assessmentOptions(classObj))
     ])
   ]);
@@ -628,19 +723,26 @@ function renderProjector() {
   let table;
   if (!classObj || !assess) {
     table = el('div', { class: 'notice', text: 'Select a class and assessment to display scores.' });
-  } else if (!classObj.students.length) {
+  } else if (!sortedStudents.length) {
     table = el('div', { class: 'notice', text: 'No students in this class yet.' });
   } else {
-    const rows = classObj.students.map(s => {
+    const phaseLabel = state.projectorPhase === 'scores' ? 'Scores showing' : state.projectorPhase === 'ids' ? 'Secret IDs showing' : state.projectorPhase === 'done' ? 'Cycle complete' : 'Waiting to start';
+    const timerLabel = state.projectorRunning ? `${state.projectorTimer}s remaining` : state.projectorPhase === 'done' ? 'Finished all students.' : 'Ready to start';
+    const groupLabel = totalGroups ? `Group ${Math.floor(currentStart / 5) + 1} of ${totalGroups}` : '';
+    const cells = currentGroup.map(s => {
       const score = assess.scores[s.studentId];
-      return el('tr', {}, [
-        el('td', {}, s.secretId || '—'),
-        el('td', {}, score === null || score === undefined ? '' : score)
+      const showScore = state.projectorPhase === 'scores';
+      return el('div', { class: 'projector-cell' }, [
+        el('div', { class: 'projector-secret', text: s.secretId || '—' }),
+        el('div', { class: 'projector-score', text: showScore ? (score === null || score === undefined ? '—' : score) : 'Hidden' })
       ]);
     });
-    table = el('table', { class: 'table' }, [
-      el('thead', {}, el('tr', {}, [el('th', {}, 'Secret ID'), el('th', {}, 'Score')])),
-      el('tbody', {}, rows)
+    table = el('div', { class: 'stack' }, [
+      el('div', { class: 'h-stack projector-controls' }, [
+        el('button', { onclick: startProjectorCycle, disabled: !sortedStudents.length || !assess }, state.projectorRunning ? 'Restart sequence' : 'Start sequence'),
+        el('div', { class: 'muted', text: `${phaseLabel}${groupLabel ? ` • ${groupLabel}` : ''} • ${timerLabel}` })
+      ]),
+      el('div', { class: 'projector-grid' }, cells)
     ]);
   }
 
@@ -780,6 +882,81 @@ function renderShowCode() {
   const bodyContent = state.showCodeStage === 'instruction' ? instruction : credentialCard;
 
   return el('main', {}, [classSelector, bodyContent]);
+}
+
+function renderIndividual() {
+  if (!state.data.classes.length) {
+    return el('main', {}, [
+      el('div', { class: 'card stack' }, [
+        el('div', { class: 'title', text: 'Individual Mode' }),
+        el('p', { text: 'No data yet. Create classes and assessments in the Teacher Panel.' })
+      ])
+    ]);
+  }
+
+  ensureDefaultSelections();
+  const classObj = state.data.classes.find(c => c.classId === state.selectedClassId);
+  const assess = classObj?.assessments.find(a => a.assessmentId === state.selectedAssessmentId);
+  if (classObj && (!state.individualStudentId || !classObj.students.find(s => s.studentId === state.individualStudentId))) {
+    state.individualStudentId = classObj.students[0]?.studentId || null;
+    state.individualRevealed = false;
+  }
+
+  const classSelect = el('select', {
+    value: state.selectedClassId || '',
+    onchange: e => { handleClassSelection(e.target.value); ensureDefaultSelections(); render(); }
+  }, [el('option', { value: '', text: 'Choose a class' }), ...classOptions()]);
+
+  const assessSelect = el('select', {
+    value: state.selectedAssessmentId || '',
+    onchange: e => { state.selectedAssessmentId = e.target.value; state.individualRevealed = false; render(); }
+  }, assessmentOptions(classObj));
+
+  const studentOptions = (classObj?.students || []).map(s => el('option', { value: s.studentId, text: s.studentId }));
+  const studentSelect = el('select', {
+    value: state.individualStudentId || '',
+    onchange: e => { state.individualStudentId = e.target.value; state.individualRevealed = false; render(); }
+  }, [el('option', { value: '', text: 'Choose student ID' }), ...studentOptions]);
+
+  const student = classObj?.students.find(s => s.studentId === state.individualStudentId);
+  const score = assess?.scores?.[student?.studentId ?? ''];
+
+  let body;
+  if (!classObj || !assess || !student) {
+    body = el('div', { class: 'notice', text: 'Select a class, assessment, and student ID to show a score.' });
+  } else {
+    const scoreSection = state.individualRevealed
+      ? el('div', { class: 'stack' }, [
+          el('div', { class: 'title', text: `Student ID ${student.studentId}` }),
+          el('div', { class: 'muted', text: `Secret ID: ${student.secretId || '—'}` }),
+          el('div', { class: 'big-secret', text: score === null || score === undefined ? '—' : score }),
+          el('button', { class: 'secondary', onclick: () => { state.individualRevealed = false; render(); } }, 'Hide score')
+        ])
+      : el('div', { class: 'stack' }, [
+          el('p', { text: `Verify the student's identity before revealing the score for ID ${student.studentId}.` }),
+          el('button', { onclick: () => { state.individualRevealed = true; render(); } }, 'Reveal score')
+        ]);
+
+    body = el('div', { class: 'card stack' }, [
+      el('div', { class: 'title', text: 'Selected student score' }),
+      scoreSection
+    ]);
+  }
+
+  return el('main', {}, [
+    el('div', { class: 'stack' }, [
+      el('div', { class: 'notice' }, 'Before revealing a score, confirm the student is who they claim to be to prevent impersonation.'),
+      el('div', { class: 'card stack' }, [
+        el('div', { class: 'title', text: 'Select student' }),
+        el('div', { class: 'h-stack' }, [
+          el('div', { style: 'min-width: 200px; flex:1;' }, [el('label', { text: 'Class' }), classSelect]),
+          el('div', { style: 'min-width: 200px; flex:1;' }, [el('label', { text: 'Assessment' }), assessSelect]),
+          el('div', { style: 'min-width: 180px;' }, [el('label', { text: 'Student ID' }), studentSelect])
+        ])
+      ]),
+      body
+    ])
+  ]);
 }
 
 function classOptions() {
@@ -1112,7 +1289,14 @@ function render() {
   }
   const header = renderHeader();
   if (header) app.appendChild(header);
-  const view = state.view === 'projector' ? renderProjector() : state.view === 'showcode' ? renderShowCode() : renderTeacherPanel();
+  const view =
+    state.view === 'projector'
+      ? renderProjector()
+      : state.view === 'showcode'
+        ? renderShowCode()
+        : state.view === 'individual'
+          ? renderIndividual()
+          : renderTeacherPanel();
   app.appendChild(view);
 }
 
